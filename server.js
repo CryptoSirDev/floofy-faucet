@@ -36,7 +36,17 @@ app.post('/api/claim', (req, res) => {
   const { address } = req.body;
 
   if (!address || address.trim() === '') {
-    return res.status(400).json({ success: false, message: 'Please provide a Floofy address.' });
+    return res.status(400).json({ success: false, message: 'Por favor, insere um endereço Floof válido.' });
+  }
+
+  const cleanAddress = address.trim();
+
+  // Validação do endereço FloofyChain (começa por 'F' e tamanho mínimo)
+  if (!cleanAddress.startsWith('F') || cleanAddress.length < 25) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Endereço inválido! Os endereços da FloofyChain começam por "F".' 
+    });
   }
 
   const now = Date.now();
