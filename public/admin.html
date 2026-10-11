@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Faucet Admin Queue</title>
+  <style>
+    body { font-family: monospace; max-width: 800px; margin: 30px auto; padding: 0 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    button { padding: 8px 12px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>Pending Faucet Requests</h2>
+  <button onclick="loadPending()">Refresh List</button>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Timestamp</th>
+        <th>Address</th>
+        <th>IP</th>
+      </tr>
+    </thead>
+    <tbody id="queue"></tbody>
+  </table>
+
+  <script>
+    async function loadPending() {
+      try {
+        const res = await fetch('/api/admin/pending');
+        const data = await res.json();
+        const tbody = document.getElementById('queue');
+        tbody.innerHTML = '';
+
+        if(data.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No pending claims</td></tr>`;
+          return;
+        }
+
+        data.forEach(item => {
+          const row = `<tr>
+            <td>${item.id}</td>
+            <td>${item.timestamp}</td>
+            <td><code>${item.address}</code></td>
+            <td>${item.ip}</td>
+          </tr>`;
+          tbody.innerHTML += row;
+        });
+      } catch(err) {
+        console.error('Failed to load queue');
+      }
+    }
+    loadPending();
+  </script>
+</body>
+</html>
