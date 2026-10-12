@@ -28,25 +28,31 @@
 
     <script>
         async function submitClaim() {
-            const address = document.getElementById('address').value;
-            const msg = document.getElementById('msg');
-            msg.style.color = '#333';
-            msg.innerText = 'Submitting...';
+  const addressInput = document.getElementById('address');
+  const btn = document.querySelector('button'); // Ou o ID do botão se tiveres
+  const msg = document.getElementById('msg');
+  
+  const address = addressInput.value;
+  btn.disabled = true; // Desativa o botão de imediato
+  msg.style.color = '#333';
+  msg.innerText = 'Submitting...';
 
-            try {
-                const response = await fetch('/api/request', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ address })
-                });
-                const data = await response.json();
-                msg.style.color = data.success ? 'green' : 'red';
-                msg.innerText = data.message;
-            } catch (e) {
-                msg.style.color = 'red';
-                msg.innerText = 'Connection error.';
-            }
-        }
+  try {
+    const response = await fetch('/api/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address })
+    });
+    const data = await response.json();
+    msg.style.color = data.success ? 'green' : 'red';
+    msg.innerText = data.message;
+  } catch (e) {
+    msg.style.color = 'red';
+    msg.innerText = 'Connection error.';
+  } finally {
+    btn.disabled = false; // Reativa o botão no final
+  }
+}
     </script>
 
 </body>
