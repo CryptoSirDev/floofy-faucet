@@ -6,6 +6,8 @@
     <title>Floofy Faucet 🦝</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f9f9f9; }
+        .header-title { display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .header-title img { width: 45px; height: 45px; }
         input { padding: 10px; width: 300px; font-size: 16px; margin-right: 10px; }
         button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; cursor: pointer; }
         button:hover { background-color: #218838; }
@@ -14,11 +16,14 @@
 </head>
 <body>
 
-    <h1>Floofy Faucet 🦝</h1>
-    <p>Submit your address to receive 1 FLOOF (1 claim per IP / 24h).</p>
+    <div class="header-title">
+        <h1>Floofy Faucet</h1>
+        <img src="Floofy_Icone.png" alt="Floofy Icon">
+    </div>
+    <p>Submit your address to receive 10 FLOOF (1 claim per IP / 24h).</p>
 
     <input type="text" id="address" placeholder="Enter your Floofy address">
-    <button onclick="submitClaim()">Request 1 FLOOF</button>
+    <button onclick="submitClaim()">Request 10 FLOOF</button>
     <div id="msg"></div>
 
     <script>
