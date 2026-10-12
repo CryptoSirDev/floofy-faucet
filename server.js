@@ -33,40 +33,103 @@ db.run(`CREATE TABLE IF NOT EXISTS ip_logs (
 )`);
 
 // Route to submit faucet request with automatic RPC transfer and 24h IP cooldown
+// Memória temporária para bloquear cliques simultâneos instantâneos
+const activeRequests = new Set();
+
 app.post('/api/request', async (req, res) => {
   const address = req.body.address ? req.body.address.trim() : '';
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  const now = new Date();
-  const COOLDOWN = 24 * 60 * 60 * 1000; // 24 horas em ms
-
+  
   if (!address) {
     return res.status(400).json({ success: false, message: 'Invalid address provided.' });
   }
 
-  // Função de apoio para consultar a base de dados
-  const getClaim = (id) => {
-    return new Promise((resolve) => {
-      db.get(`SELECT timestamp FROM faucet_claims WHERE identifier = ?`, [id], (err, row) => {
-        resolve(row);
-      });
-    });
-  };
+  const ipKey = `ip_${clientIp}`;
+  const addrKey = `addr_${address}`;
+
+  // BLOQUEIO INSTANTÂNEO DE CONCURRÊNCIA (Impede cliques múltiplos ao mesmo tempo)
+  if (activeRequests.has(ipKey) || activeRequests.has(addrKey)) {
+    return res.status(429).json({ success: false, message: 'Too many requests. Please wait.' });
+  }
+
+  activeRequests.add(ipKey);
+  activeRequests.add(addrKey);
 
   try {
-    // 1. Verificar IP
-    const ipRow = await getClaim(`ip_${clientIp}`);
+    const now = new Date();
+    const COOLDOWN = 24 * 60 * 60 * 1000; // 24 horas em ms
+
+    // Função de apoio para consultar a base de dados
+    const getClaim = (id) => {
+      return new Promise((resolve) => {
+        db.get(`SELECT timestamp FROM faucet_claims WHERE identifier = ?`, [id], (err, row) => {
+          resolve(row);
+        });
+      });
+    };
+
+    // 1. Verificar IP na BD
+    const ipRow = await getClaim(ipKey);
     if (ipRow && (now - new Date(ipRow.timestamp) < COOLDOWN)) {
       const hoursLeft = Math.ceil(24 - (now - new Date(ipRow.timestamp)) / (1000 * 60 * 60));
       return res.status(429).json({ success: false, message: `IP limit reached. Please wait ${hoursLeft} hour(s).` });
     }
 
-    // 2. Verificar Endereço
-    const addrRow = await getClaim(`addr_${address}`);
+    // 2. Verificar Endereço na BD
+    const addrRow = await getClaim(addrKey);
     if (addrRow && (now - new Date(addrRow.timestamp) < COOLDOWN)) {
       const hoursLeft = Math.ceil(24 - (now - new Date(addrRow.timestamp)) / (1000 * 60 * 60));
       return res.status(429).json({ success: false, message: `Address limit reached. Please wait ${hoursLeft} hour(s).` });
     }
 
+    // 3. Executar o envio dos FLOOF via RPC para o nó local
+    const rpcResponse = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64')
+      },
+      body: JSON.stringify({
+        jsonrpc: '1.0',
+        id: 'faucet',
+        method: 'sendtoaddress',
+        params: [address, 10.0]
+      })
+    });
+
+    const rpcData = await rpcResponse.json();
+
+    if (rpcData.error) {
+      return res.status(500).json({ success: false, message: 'RPC Error: ' + rpcData.error.message });
+    }
+
+    const txid = rpcData.result;
+
+    // 4. Gravar o sucesso na base de dados
+    const saveClaim = (id) => {
+      return new Promise((resolve) => {
+        db.run(`INSERT INTO faucet_claims (identifier, timestamp) VALUES (?, ?) 
+                ON CONFLICT(identifier) DO UPDATE SET timestamp = ?`, 
+                [id, now.toISOString(), now.toISOString()], () => resolve());
+      });
+    };
+
+    await saveClaim(ipKey);
+    await saveClaim(addrKey);
+
+    return res.json({ success: true, message: `Transaction sent successfully! TXID: ${txid}` });
+
+  } catch (error) {
+    console.error('Faucet error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to connect to local RPC node.' });
+  } finally {
+    // Liberta a trava de concorrência para permitir futuros pedidos legítimos após o ciclo
+    setTimeout(() => {
+      activeRequests.delete(ipKey);
+      activeRequests.delete(addrKey);
+    }, 2000); // 2 segundos de proteção extra contra duplo clique
+  }
+});
     // 3. Executar o envio dos FLOOF via RPC para o nó local
     const rpcResponse = await fetch(RPC_URL, {
       method: 'POST',
