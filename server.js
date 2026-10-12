@@ -34,44 +34,81 @@ db.run(`CREATE TABLE IF NOT EXISTS ip_logs (
 
 // Route to submit faucet request with automatic RPC transfer and 24h IP cooldown
 app.post('/api/request', async (req, res) => {
-  const address = req.body.address;
+  const address = req.body.address ? req.body.address.trim() : '';
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   const now = new Date();
+  const COOLDOWN = 24 * 60 * 60 * 1000; // 24 horas em ms
 
   if (!address) {
     return res.status(400).json({ success: false, message: 'Invalid address provided.' });
   }
 
-  // Função auxiliar para consultar a base de dados com Promise
-  const checkLimit = (query, params) => {
-    return new Promise((resolve, reject) => {
-      db.get(query, params, (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
+  // Função de apoio para consultar a base de dados
+  const getClaim = (id) => {
+    return new Promise((resolve) => {
+      db.get(`SELECT timestamp FROM faucet_claims WHERE identifier = ?`, [id], (err, row) => {
+        resolve(row);
       });
     });
   };
 
   try {
-    // 1. Verificar limite por Endereço
-    const addrRow = await checkLimit(
-      `SELECT timestamp FROM pending_claims WHERE address = ? ORDER BY id DESC LIMIT 1`,
-      [address.trim()]
-    );
-
-    if (addrRow) {
-      const lastAddrClaimDate = new Date(addrRow.timestamp);
-      const hoursPassedAddr = (now - lastAddrClaimDate) / (1000 * 60 * 60);
-
-      if (hoursPassedAddr < 24) {
-        const hoursLeftAddr = Math.ceil(24 - hoursPassedAddr);
-        return res.status(429).json({
-          success: false,
-          message: `Address limit reached. Please wait ${hoursLeftAddr} hour(s) before requesting again.`
-        });
-      }
+    // 1. Verificar IP
+    const ipRow = await getClaim(`ip_${clientIp}`);
+    if (ipRow && (now - new Date(ipRow.timestamp) < COOLDOWN)) {
+      const hoursLeft = Math.ceil(24 - (now - new Date(ipRow.timestamp)) / (1000 * 60 * 60));
+      return res.status(429).json({ success: false, message: `IP limit reached. Please wait ${hoursLeft} hour(s).` });
     }
 
+    // 2. Verificar Endereço
+    const addrRow = await getClaim(`addr_${address}`);
+    if (addrRow && (now - new Date(addrRow.timestamp) < COOLDOWN)) {
+      const hoursLeft = Math.ceil(24 - (now - new Date(addrRow.timestamp)) / (1000 * 60 * 60));
+      return res.status(429).json({ success: false, message: `Address limit reached. Please wait ${hoursLeft} hour(s).` });
+    }
+
+    // 3. Executar o envio dos FLOOF via RPC para o nó local
+    const rpcResponse = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64')
+      },
+      body: JSON.stringify({
+        jsonrpc: '1.0',
+        id: 'faucet',
+        method: 'sendtoaddress',
+        params: [address, 10.0]
+      })
+    });
+
+    const rpcData = await rpcResponse.json();
+
+    if (rpcData.error) {
+      return res.status(500).json({ success: false, message: 'RPC Error: ' + rpcData.error.message });
+    }
+
+    const txid = rpcData.result;
+
+    // 4. Gravar o sucesso na base de dados para bloquear futuros pedidos
+    const saveClaim = (id) => {
+      return new Promise((resolve) => {
+        db.run(`INSERT INTO faucet_claims (identifier, timestamp) VALUES (?, ?) 
+                ON CONFLICT(identifier) DO UPDATE SET timestamp = ?`, 
+                [id, now.toISOString(), now.toISOString()], () => resolve());
+      });
+    };
+
+    await saveClaim(`ip_${clientIp}`);
+    await saveClaim(`addr_${address}`);
+
+    return res.json({ success: true, message: `Transaction sent successfully! TXID: ${txid}` });
+
+  } catch (error) {
+    console.error('Faucet error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to connect to local RPC node.' });
+  }
+});
     // 2. Verificar limite por IP
     const ipRow = await checkLimit(
       `SELECT last_claim FROM ip_logs WHERE ip = ?`,
