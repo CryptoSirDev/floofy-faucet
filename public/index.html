@@ -5,54 +5,127 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Floofy Faucet</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f9f9f9; }
-        .header-title { display: flex; align-items: center; justify-content: center; gap: 10px; }
-        .header-title img { width: 45px; height: 45px; }
-        input { padding: 10px; width: 300px; font-size: 16px; margin-right: 10px; }
-        button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #218838; }
-        #msg { margin-top: 20px; font-weight: bold; font-size: 18px; }
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 100px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            max-width: 500px;
+            margin: auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        button:disabled {
+            background-color: #94d3a2;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) {
+            background-color: #218838;
+        }
+        #msg {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        #faucet-balance {
+            margin-top: 25px;
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
 
-    <div class="header-title">
-        <h1>Floofy Faucet</h1>
-        <img src="Floofy_Icone.png" alt="Floofy Icon">
-    </div>
-    <p>Submit your address to receive 10 FLOOF (1 claim per IP / 24h).</p>
+    <div class="container">
+        <h2>Floofy Faucet 🕶️</h2>
+        <p>Submit your address to receive 10 FLOOF (1 claim per IP / 24h).</p>
+        
+        <div style="margin-top: 20px;">
+            <input type="text" id="address" placeholder="Enter your Floofy address">
+            <button id="claim-btn" onclick="submitClaim()">Request 10 FLOOF</button>
+        </div>
 
-    <input type="text" id="address" placeholder="Enter your Floofy address">
-    <button onclick="submitClaim()">Request 10 FLOOF</button>
-    <div id="msg"></div>
+        <div id="msg"></div>
+        <div id="faucet-balance">Faucet Balance: Loading...</div>
+    </div>
 
     <script>
-        async function submitClaim() {
-  const addressInput = document.getElementById('address');
-  const btn = document.querySelector('button'); // Ou o ID do botão se tiveres
-  const msg = document.getElementById('msg');
-  
-  const address = addressInput.value;
-  btn.disabled = true; // Desativa o botão de imediato
-  msg.style.color = '#333';
-  msg.innerText = 'Submitting...';
+        // Carregar o saldo atual do faucet ao abrir a página
+        async function loadBalance() {
+            try {
+                const res = await fetch('/api/balance');
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('faucet-balance').innerText = `Faucet Balance: ${Number(data.balance).toLocaleString()} FLOOF`;
+                } else {
+                    document.getElementById('faucet-balance').innerText = 'Faucet Balance: Offline';
+                }
+            } catch (e) {
+                document.getElementById('faucet-balance').innerText = 'Faucet Balance: Offline';
+            }
+        }
 
-  try {
-    const response = await fetch('/api/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address })
-    });
-    const data = await response.json();
-    msg.style.color = data.success ? 'green' : 'red';
-    msg.innerText = data.message;
-  } catch (e) {
-    msg.style.color = 'red';
-    msg.innerText = 'Connection error.';
-  } finally {
-    btn.disabled = false; // Reativa o botão no final
-  }
-}
+        loadBalance();
+
+        // Submeter o pedido de fundos de forma segura e protegida contra spam
+        async function submitClaim() {
+            const addressInput = document.getElementById('address');
+            const btn = document.getElementById('claim-btn');
+            const msg = document.getElementById('msg');
+            
+            const address = addressInput.value.trim();
+            if (!address) {
+                msg.style.color = 'red';
+                msg.innerText = 'Please enter a valid address.';
+                return;
+            }
+
+            btn.disabled = true;
+            msg.style.color = '#333';
+            msg.innerText = 'Processing request...';
+
+            try {
+                const response = await fetch('/api/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address })
+                });
+                const data = await response.json();
+                
+                msg.style.color = data.success ? 'green' : 'red';
+                msg.innerText = data.message;
+
+                // Atualiza o saldo se o envio for bem-sucedido
+                if (data.success) {
+                    loadBalance();
+                }
+            } catch (e) {
+                msg.style.color = 'red';
+                msg.innerText = 'Connection error.';
+            } finally {
+                btn.disabled = false;
+            }
+        }
     </script>
 
 </body>
