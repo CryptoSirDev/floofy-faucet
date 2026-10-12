@@ -23,27 +23,27 @@
   <div id="msg"></div>
 
   <script>
+    <script>
     async function submitClaim() {
-      const address = document.getElementById('address').value;
-      const msg = document.getElementById('msg');
-      msg.style.color = '#333';
-      msg.innerText = 'Submitting...';
+        const address = document.getElementById('address').value;
+        const msg = document.getElementById('msg');
+        msg.style.color = '#333';
+        msg.innerText = 'Submitting...';
 
-      try {
-        const res = a => fetch('/api/claim', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address })
-        });
-        const response = await res();
-        const data = await response.json();
-        msg.style.color = data.success ? 'green' : 'red';
-        msg.innerText = data.message;
-      } catch (e) {
-        msg.style.color = 'red';
-        msg.innerText = 'Connection error.';
-      }
+        try {
+            const response = await fetch('/api/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address })
+            });
+            const data = await response.json();
+            msg.style.color = data.success ? 'green' : 'red';
+            msg.innerText = data.message;
+        } (e) {
+            msg.style.color = 'red';
+            msg.innerText = 'Connection error.';
+        }
     }
-  </script>
+</script>
 </body>
 </html>
