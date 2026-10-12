@@ -30,7 +30,8 @@ app.get('/api/balance', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64')
+        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64'),
+        'ngrok-skip-browser-warning': 'true'
       },
       body: JSON.stringify({
         jsonrpc: '1.0',
@@ -102,7 +103,8 @@ app.post('/api/request', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64')
+        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64'),
+        'ngrok-skip-browser-warning': 'true'
       },
       body: JSON.stringify({
         jsonrpc: '1.0',
