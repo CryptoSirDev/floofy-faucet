@@ -1,49 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Floofy Faucet</title>
-  <style>
-    body { font-family: sans-serif; max-width: 450px; margin: 50px auto; text-align: center; background: #fafafa; padding: 20px; }
-    input { width: 90%; padding: 10px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px; }
-    button { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #218838; }
-    #msg { margin-top: 15px; font-weight: bold; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floofy Faucet 🦝</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f9f9f9; }
+        input { padding: 10px; width: 300px; font-size: 16px; margin-right: 10px; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #218838; }
+        #msg { margin-top: 20px; font-weight: bold; font-size: 18px; }
+    </style>
 </head>
 <body>
-  <h2 style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-  Floofy Faucet 
-  <img src="Floofy_Icone.png" alt="Floofy" style="width: 40px; height: 40px; vertical-align: middle; border-radius: 50%;">
-</h2>
-  <p>Submit your address to receive 1 FLOOF (1 claim per IP / 24h).</p>
-  <input type="text" id="address" placeholder="Enter FLOOF address">
-  <br>
-  <button onclick="submitClaim()">Request 1 FLOOF</button>
-  <div id="msg"></div>
 
-  <script>
+    <h1>Floofy Faucet 🦝</h1>
+    <p>Submit your address to receive 1 FLOOF (1 claim per IP / 24h).</p>
+
+    <input type="text" id="address" placeholder="Enter your Floofy address">
+    <button onclick="submitClaim()">Request 1 FLOOF</button>
+    <div id="msg"></div>
+
     <script>
-    async function submitClaim() {
-        const address = document.getElementById('address').value;
-        const msg = document.getElementById('msg');
-        msg.style.color = '#333';
-        msg.innerText = 'Submitting...';
+        async function submitClaim() {
+            const address = document.getElementById('address').value;
+            const msg = document.getElementById('msg');
+            msg.style.color = '#333';
+            msg.innerText = 'Submitting...';
 
-        try {
-            const response = await fetch('/api/request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ address })
-            });
-            const data = await response.json();
-            msg.style.color = data.success ? 'green' : 'red';
-            msg.innerText = data.message;
-        } (e) {
-            msg.style.color = 'red';
-            msg.innerText = 'Connection error.';
+            try {
+                const response = await fetch('/api/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address })
+                });
+                const data = await response.json();
+                msg.style.color = data.success ? 'green' : 'red';
+                msg.innerText = data.message;
+            } catch (e) {
+                msg.style.color = 'red';
+                msg.innerText = 'Connection error.';
+            }
         }
-    }
-</script>
+    </script>
+
 </body>
 </html>
