@@ -31,68 +31,99 @@ db.run(`CREATE TABLE IF NOT EXISTS ip_logs (
     last_claim TEXT
 )`);
 
-// Route to submit faucet request with automatic RPC transfer
+// Route to submit faucet request with automatic RPC transfer and 24h IP cooldown
 app.post('/api/request', async (req, res) => {
     const address = req.body.address;
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const now = new Date().toISOString();
+    const now = new Date();
 
     if (!address) {
         return res.status(400).json({ success: false, message: 'Invalid address provided.' });
     }
 
-    // RPC configurations from Render environment variables
-    const rpcHost = process.env.RPC_HOST; // e.g., https://xxxx.ngrok-free.dev
-    const rpcUser = process.env.RPC_USER;
-    const rpcPass = process.env.RPC_PASS;
-    const amountToSend = 1.0; // Amount of coins to send per request
-
-    try {
-        // Prepare JSON-RPC payload for sendtoaddress
-        const rpcPayload = {
-            jsonrpc: '1.0',
-            id: 'faucet',
-            method: 'sendtoaddress',
-            params: [address.trim(), amountToSend]
-        };
-
-        const authHeader = 'Basic ' + Buffer.from(`${rpcUser}:${rpcPass}`).toString('base64');
-
-        const rpcResponse = await fetch(rpcHost, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': authHeader,
-                'ngrok-skip-browser-warning': 'true'
-            },
-            body: JSON.stringify(rpcPayload)
-        });
-
-        const rpcData = await rpcResponse.json();
-
-        if (rpcData.error) {
-            console.error('Node RPC Error:', rpcData.error);
-            return res.status(500).json({ success: false, message: `Node error: ${rpcData.error.message}` });
+    // Check IP rate limit (24 hours cooldown)
+    db.get(`SELECT last_claim FROM ip_logs WHERE ip = ?`, [clientIp], async (err, row) => {
+        if (err) {
+            console.error('Database query error:', err);
+            return res.status(500).json({ success: false, message: 'Database error.' });
         }
 
-        const txid = rpcData.result;
+        if (row) {
+            const lastClaimDate = new Date(row.last_claim);
+            const hoursPassed = (now - lastClaimDate) / (1000 * 60 * 60);
 
-        // Log successful transaction into database
-        db.run(`INSERT INTO pending_claims (timestamp, address, ip, status) VALUES (?, ?, ?, ?)`, 
-            [now, address.trim(), clientIp, 'completed'], (err) => {
-                if (err) console.error('Error recording claim log:', err);
+            if (hoursPassed < 24) {
+                const hoursLeft = Math.ceil(24 - hoursPassed);
+                return res.status(429).json({ 
+                    success: false, 
+                    message: `IP limit reached. Please wait ${hoursLeft} hour(s) before requesting again.` 
+                });
             }
-        );
+        }
 
-        return res.json({
-            success: true,
-            message: `Transaction sent successfully! TXID: ${txid}`
-        });
+        // RPC configurations from Render environment variables
+        let rpcHost = process.env.RPC_HOST; // e.g., https://xxxx.ngrok-free.dev
+        const rpcUser = process.env.RPC_USER;
+        const rpcPass = process.env.RPC_PASS;
+        const amountToSend = 10.0; // Sending 10 FLOOF
 
-    } catch (error) {
-        console.error('RPC connection error:', error);
-        return res.status(500).json({ success: false, message: 'Failed to connect to local RPC node.' });
-    }
+        // Support specific wallet name if defined in RPC_WALLET env variable
+        if (process.env.RPC_WALLET) {
+            const cleanHost = rpcHost.replace(/\/$/, '');
+            rpcHost = `${cleanHost}/wallet/${process.env.RPC_WALLET}`;
+        }
+
+        try {
+            // Prepare JSON-RPC payload for sendtoaddress
+            const rpcPayload = {
+                jsonrpc: '1.0',
+                id: 'faucet',
+                method: 'sendtoaddress',
+                params: [address.trim(), amountToSend]
+            };
+
+            const authHeader = 'Basic ' + Buffer.from(`${rpcUser}:${rpcPass}`).toString('base64');
+
+            const rpcResponse = await fetch(rpcHost, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': authHeader,
+                    'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify(rpcPayload)
+            });
+
+            const rpcData = await rpcResponse.json();
+
+            if (rpcData.error) {
+                console.error('Node RPC Error:', rpcData.error);
+                return res.status(500).json({ success: false, message: `Node error: ${rpcData.error.message}` });
+            }
+
+            const txid = rpcData.result;
+
+            // Log claim in pending_claims
+            db.run(`INSERT INTO pending_claims (timestamp, address, ip, status) VALUES (?, ?, ?, ?)`, 
+                [now.toISOString(), address.trim(), clientIp, 'completed']
+            );
+
+            // Update or insert IP log for 24h tracking
+            db.run(`INSERT INTO ip_logs (ip, last_claim) VALUES (?, ?) 
+                    ON CONFLICT(ip) DO UPDATE SET last_claim = excluded.last_claim`,
+                [clientIp, now.toISOString()]
+            );
+
+            return res.json({
+                success: true,
+                message: `Transaction sent successfully! TXID: ${txid}`
+            });
+
+        } catch (error) {
+            console.error('RPC connection error:', error);
+            return res.status(500).json({ success: false, message: 'Failed to connect to local RPC node.' });
+        }
+    });
 });
 
 // Route for admin panel to fetch request logs
