@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -40,26 +41,29 @@ app.post('/api/request', async (req, res) => {
     if (!address) {
         return res.status(400).json({ success: false, message: 'Invalid address provided.' });
     }
+    
+    // Check Address rate limit (24 hours cooldown)
+db.get(`SELECT timestamp FROM pending_claims WHERE address = ? ORDER BY id DESC LIMIT 1`, [address.trim()], async (err, addrRow) => {
+  if (err) {
+    console.error('Database query error:', err);
+    return res.status(500).json({ success: false, message: 'Database error.' });
+  }
 
-    // Check IP rate limit (24 hours cooldown)
-    db.get(`SELECT last_claim FROM ip_logs WHERE ip = ?`, [clientIp], async (err, row) => {
-        if (err) {
-            console.error('Database query error:', err);
-            return res.status(500).json({ success: false, message: 'Database error.' });
-        }
+  if (addrRow) {
+    const lastAddrClaimDate = new Date(addrRow.timestamp);
+    const hoursPassedAddr = (now - lastAddrClaimDate) / (1000 * 60 * 60);
 
-        if (row) {
-            const lastClaimDate = new Date(row.last_claim);
-            const hoursPassed = (now - lastClaimDate) / (1000 * 60 * 60);
-
-            if (hoursPassed < 24) {
-                const hoursLeft = Math.ceil(24 - hoursPassed);
-                return res.status(429).json({ 
-                    success: false, 
-                    message: `IP limit reached. Please wait ${hoursLeft} hour(s) before requesting again.` 
-                });
-            }
-        }
+    if (hoursPassedAddr < 24) {
+      const hoursLeftAddr = Math.ceil(24 - hoursPassedAddr);
+      return res.status(429).json({
+        success: false,
+        message: `Address limit reached. Please wait ${hoursLeftAddr} hour(s) before requesting again.`
+      });
+    }
+  }
+  
+  // ... aqui continua a tua verificação de IP e o resto do código ...
+});
 
         // RPC configurations from Render environment variables
         let rpcHost = process.env.RPC_HOST; // e.g., https://xxxx.ngrok-free.dev
