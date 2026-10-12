@@ -1,91 +1,108 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
+const bodyParser = require('body-parser');
 const path = require('path');
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Crucial for Render: trust proxy headers to get real user IPs
-app.set('trust proxy', 1);
-
-// Initialize SQLite Database
-const db = new sqlite3.Database('./faucet_manual.db', (err) => {
-  if (err) console.error('DB error:', err.message);
-  else console.log('Connected to SQLite database.');
+// Connect to SQLite database
+const db = new sqlite3.Database('./faucet.db', (err) => {
+    if (err) {
+        console.error('Error opening database:', err.message);
+    } else {
+        console.log('Connected to SQLite database.');
+    }
 });
 
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS ip_logs (
-    ip TEXT PRIMARY KEY,
-    last_claim INTEGER
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS pending_claims (
+// Create tables if they do not exist
+db.run(`CREATE TABLE IF NOT EXISTS pending_claims (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    address TEXT NOT NULL,
-    ip TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp TEXT,
+    address TEXT,
+    ip TEXT,
     status TEXT DEFAULT 'pending'
-  )`);
-});
+)`);
 
-app.post('/api/claim', (req, res) => {
-  const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  const { address } = req.body;
+db.run(`CREATE TABLE IF NOT EXISTS ip_logs (
+    ip TEXT PRIMARY KEY,
+    last_claim TEXT
+)`);
 
-  if (!address || address.trim() === '') {
-    return res.status(400).json({ success: false, message: 'Please enter a valid Floof address.' });
-  }
+// Route to submit faucet request with automatic RPC transfer
+app.post('/api/request', async (req, res) => {
+    const address = req.body.address;
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const now = new Date().toISOString();
 
-  const cleanAddress = address.trim();
-
-  // Address validation: must start with 'F' and be long enough
-  if (!cleanAddress.startsWith('F') || cleanAddress.length < 25) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Invalid address! FloofyChain addresses must start with "F".' 
-    });
-  }
-
-  const now = Date.now();
-  const cooldown = 24 * 60 * 60 * 1000; // 24 hours
-
-  db.get(`SELECT last_claim FROM ip_logs WHERE ip = ?`, [clientIp], (err, row) => {
-    if (err) return res.status(500).json({ success: false, message: 'Database error.' });
-
-    if (row && (now - row.last_claim < cooldown)) {
-      const hoursLeft = Math.ceil((cooldown - (now - row.last_claim)) / (1000 * 60 * 60));
-      return res.status(429).json({ 
-        success: false, 
-        message: `Cooldown active. Try again in ~${hoursLeft} hour(s).` 
-      });
+    if (!address) {
+        return res.status(400).json({ success: false, message: 'Invalid address provided.' });
     }
 
-    db.run(`INSERT INTO pending_claims (address, ip) VALUES (?, ?)`, [address.trim(), clientIp], function(claimErr) {
-      if (claimErr) {
-        return res.status(500).json({ success: false, message: 'Error recording request.' });
-      }
+    // RPC configurations from Render environment variables
+    const rpcHost = process.env.RPC_HOST; // e.g., https://xxxx.ngrok-free.dev
+    const rpcUser = process.env.RPC_USER;
+    const rpcPass = process.env.RPC_PASS;
+    const amountToSend = 1.0; // Amount of coins to send per request
 
-      db.run(`INSERT INTO ip_logs (ip, last_claim) VALUES (?, ?) 
-              ON CONFLICT(ip) DO UPDATE SET last_claim = ?`, 
-              [clientIp, now, now]);
+    try {
+        // Prepare JSON-RPC payload for sendtoaddress
+        const rpcPayload = {
+            jsonrpc: '1.0',
+            id: 'faucet',
+            method: 'sendtoaddress',
+            params: [address.trim(), amountToSend]
+        };
 
-      return res.json({ 
-        success: true, 
-        message: 'Claim request submitted successfully! 1 FLOOF will be sent manually.' 
-      });
-    });
-  });
+        const authHeader = 'Basic ' + Buffer.from(`${rpcUser}:${rpcPass}`).toString('base64');
+
+        const rpcResponse = await fetch(rpcHost, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': authHeader
+            },
+            body: JSON.stringify(rpcPayload)
+        });
+
+        const rpcData = await rpcResponse.json();
+
+        if (rpcData.error) {
+            console.error('Node RPC Error:', rpcData.error);
+            return res.status(500).json({ success: false, message: `Node error: ${rpcData.error.message}` });
+        }
+
+        const txid = rpcData.result;
+
+        // Log successful transaction into database
+        db.run(`INSERT INTO pending_claims (timestamp, address, ip, status) VALUES (?, ?, ?, ?)`, 
+            [now, address.trim(), clientIp, 'completed'], (err) => {
+                if (err) console.error('Error recording claim log:', err);
+            }
+        );
+
+        return res.json({
+            success: true,
+            message: `Transaction sent successfully! TXID: ${txid}`
+        });
+
+    } catch (error) {
+        console.error('RPC connection error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to connect to local RPC node.' });
+    }
 });
 
+// Route for admin panel to fetch request logs
 app.get('/api/admin/pending', (req, res) => {
-  db.all(`SELECT * FROM pending_claims WHERE status = 'pending' ORDER BY id ASC`, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+    db.all(`SELECT * FROM pending_claims ORDER BY id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Faucet server running on port ${PORT}`));
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`Faucet server running on port ${PORT}`);
+});
