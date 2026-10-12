@@ -62,7 +62,8 @@ app.post('/api/request', async (req, res) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': authHeader
+                'Authorization': authHeader,
+                'ngrok-skip-browser-warning': 'true'
             },
             body: JSON.stringify(rpcPayload)
         });
