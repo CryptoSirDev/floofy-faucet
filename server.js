@@ -42,11 +42,13 @@ app.get('/api/balance', async (req, res) => {
 
     const data = await response.json();
     if (data.error) {
+      console.error('RPC Node Error:', data.error.message);
       return res.status(500).json({ success: false, error: data.error.message });
     }
 
     return res.json({ success: true, balance: data.result });
   } catch (error) {
+    console.error('Fetch Balance Error Details:', error.message);
     return res.status(500).json({ success: false, error: 'Erro ao ligar ao nó.' });
   }
 });
