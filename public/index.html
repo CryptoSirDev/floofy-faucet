@@ -8,7 +8,7 @@
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-            margin-top: 100px;
+            margin-top: 80px;
             background-color: #f9f9f9;
         }
         .container {
@@ -16,25 +16,57 @@
             margin: auto;
             background: white;
             padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .header-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .header-logo img {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            border-radius: 50%;
+        }
+        h2 {
+            margin: 0;
+            font-size: 26px;
+            color: #333;
+        }
+        p {
+            color: #666;
+            font-size: 14px;
+        }
+        .input-group {
+            margin-top: 25px;
+            display: flex;
+            gap: 8px;
         }
         input[type="text"] {
-            width: 70%;
-            padding: 10px;
-            font-size: 16px;
+            flex: 1;
+            padding: 12px;
+            font-size: 15px;
             border: 1px solid #ccc;
-            border-radius: 4px;
+            border-radius: 6px;
+            outline: none;
+        }
+        input[type="text"]:focus {
+            border-color: #28a745;
         }
         button {
-            padding: 10px 20px;
-            font-size: 16px;
+            padding: 12px 20px;
+            font-size: 15px;
             background-color: #28a745;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
-            margin-left: 5px;
+            font-weight: bold;
+            transition: background 0.2s;
         }
         button:disabled {
             background-color: #94d3a2;
@@ -46,23 +78,30 @@
         #msg {
             margin-top: 20px;
             font-weight: bold;
+            font-size: 14px;
         }
         #faucet-balance {
             margin-top: 25px;
             font-size: 14px;
-            color: #666;
+            color: #555;
+            background: #f1f3f5;
+            padding: 10px;
+            border-radius: 6px;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>Floofy Faucet 🕶️</h2>
+        <div class="header-logo">
+            <img src="Floofy_Icone.png" alt="Floofy Logo">
+            <h2>Floofy Faucet</h2>
+        </div>
         <p>Submit your address to receive 10 FLOOF (1 claim per IP / 24h).</p>
         
-        <div style="margin-top: 20px;">
+        <div class="input-group">
             <input type="text" id="address" placeholder="Enter your Floofy address">
-            <button id="claim-btn" onclick="submitClaim()">Request 10 FLOOF</button>
+            <button id="claim-btn" onclick="submitClaim()">Request</button>
         </div>
 
         <div id="msg"></div>
@@ -70,7 +109,6 @@
     </div>
 
     <script>
-        // Carregar o saldo atual do faucet ao abrir a página
         async function loadBalance() {
             try {
                 const res = await fetch('/api/balance');
@@ -87,7 +125,6 @@
 
         loadBalance();
 
-        // Submeter o pedido de fundos de forma segura e protegida contra spam
         async function submitClaim() {
             const addressInput = document.getElementById('address');
             const btn = document.getElementById('claim-btn');
@@ -115,7 +152,6 @@
                 msg.style.color = data.success ? 'green' : 'red';
                 msg.innerText = data.message;
 
-                // Atualiza o saldo se o envio for bem-sucedido
                 if (data.success) {
                     loadBalance();
                 }
