@@ -34,39 +34,7 @@ db.run(`CREATE TABLE IF NOT EXISTS ip_logs (
 
 // Route to submit faucet request with automatic RPC transfer and 24h IP cooldown
 // Memória temporária para bloquear cliques simultâneos instantâneos
-const activeRequests = new Set();
 
-app.post('/api/request', async (req, res) => {
-  const address = req.body.address ? req.body.address.trim() : '';
-  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  
-  if (!address) {
-    return res.status(400).json({ success: false, message: 'Invalid address provided.' });
-  }
-
-  const ipKey = `ip_${clientIp}`;
-  const addrKey = `addr_${address}`;
-
-  // BLOQUEIO INSTANTÂNEO DE CONCURRÊNCIA (Impede cliques múltiplos ao mesmo tempo)
-  if (activeRequests.has(ipKey) || activeRequests.has(addrKey)) {
-    return res.status(429).json({ success: false, message: 'Too many requests. Please wait.' });
-  }
-
-  activeRequests.add(ipKey);
-  activeRequests.add(addrKey);
-
-  try {
-    const now = new Date();
-    const COOLDOWN = 24 * 60 * 60 * 1000; // 24 horas em ms
-
-    // Função de apoio para consultar a base de dados
-    const getClaim = (id) => {
-      return new Promise((resolve) => {
-        db.get(`SELECT timestamp FROM faucet_claims WHERE identifier = ?`, [id], (err, row) => {
-          resolve(row);
-        });
-      });
-    };
 
     // 1. Verificar IP na BD
     const ipRow = await getClaim(ipKey);
