@@ -34,33 +34,62 @@ db.run(`CREATE TABLE IF NOT EXISTS ip_logs (
 
 // Route to submit faucet request with automatic RPC transfer and 24h IP cooldown
 app.post('/api/request', async (req, res) => {
-    const address = req.body.address;
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const now = new Date();
+  const address = req.body.address;
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const now = new Date();
 
-    if (!address) {
-        return res.status(400).json({ success: false, message: 'Invalid address provided.' });
-    }
-    
-    // Check Address rate limit (24 hours cooldown)
-db.get(`SELECT timestamp FROM pending_claims WHERE address = ? ORDER BY id DESC LIMIT 1`, [address.trim()], async (err, addrRow) => {
-  if (err) {
-    console.error('Database query error:', err);
-    return res.status(500).json({ success: false, message: 'Database error.' });
+  if (!address) {
+    return res.status(400).json({ success: false, message: 'Invalid address provided.' });
   }
 
-  if (addrRow) {
-    const lastAddrClaimDate = new Date(addrRow.timestamp);
-    const hoursPassedAddr = (now - lastAddrClaimDate) / (1000 * 60 * 60);
-
-    if (hoursPassedAddr < 24) {
-      const hoursLeftAddr = Math.ceil(24 - hoursPassedAddr);
-      return res.status(429).json({
-        success: false,
-        message: `Address limit reached. Please wait ${hoursLeftAddr} hour(s) before requesting again.`
+  // Função auxiliar para consultar a base de dados com Promise
+  const checkLimit = (query, params) => {
+    return new Promise((resolve, reject) => {
+      db.get(query, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
       });
+    });
+  };
+
+  try {
+    // 1. Verificar limite por Endereço
+    const addrRow = await checkLimit(
+      `SELECT timestamp FROM pending_claims WHERE address = ? ORDER BY id DESC LIMIT 1`,
+      [address.trim()]
+    );
+
+    if (addrRow) {
+      const lastAddrClaimDate = new Date(addrRow.timestamp);
+      const hoursPassedAddr = (now - lastAddrClaimDate) / (1000 * 60 * 60);
+
+      if (hoursPassedAddr < 24) {
+        const hoursLeftAddr = Math.ceil(24 - hoursPassedAddr);
+        return res.status(429).json({
+          success: false,
+          message: `Address limit reached. Please wait ${hoursLeftAddr} hour(s) before requesting again.`
+        });
+      }
     }
-  }
+
+    // 2. Verificar limite por IP
+    const ipRow = await checkLimit(
+      `SELECT last_claim FROM ip_logs WHERE ip = ?`,
+      [clientIp]
+    );
+
+    if (ipRow) {
+      const lastClaimDate = new Date(ipRow.last_claim);
+      const hoursPassedIp = (now - lastClaimDate) / (1000 * 60 * 60);
+
+      if (hoursPassedIp < 24) {
+        const hoursLeftIp = Math.ceil(24 - hoursPassedIp);
+        return res.status(429).json({
+          success: false,
+          message: `IP limit reached. Please wait ${hoursLeftIp} hour(s) before requesting again.`
+        });
+      }
+    }
   
   // ... aqui continua a tua verificação de IP e o resto do código ...
 });
