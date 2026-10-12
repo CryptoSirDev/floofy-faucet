@@ -107,9 +107,19 @@
         <div id="msg"></div>
         <div id="faucet-balance">Faucet Balance: Loading...</div>
     </div>
+<div style="margin-top: 30px; margin-bottom: 20px; text-align: center;">
+    <!-- Start rollercoin.com code -->
+    <a href="https://rollercoin.com/?r=kkre7hya" target="_blank" rel="noopener noreferrer">
+      <img src="https://static.rollercoin.com/static/img/ref/gen3/w728h90.gif" 
+           alt="RollerCoin - Free Crypto Mining Game" 
+           style="max-width: 90%; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+    </a>
+    <!-- End rollercoin.com code -->
+  </div>
 
-    <script>
-        async function loadBalance() {
+  <!-- Scripts da Faucet -->
+  <script>
+    async function loadBalance() {
             try {
                 const res = await fetch('/api/balance');
                 const data = await res.json();
