@@ -89,6 +89,36 @@
             padding: 10px;
             border-radius: 6px;
         }
+        body, .card, div, input {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+body.dark-mode {
+  background-color: #121212 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .container,
+body.dark-mode div[style*="background-color: white"],
+body.dark-mode div[style*="background: white"],
+body.dark-mode div[style*="background: #fff"],
+body.dark-mode div[style*="background-color: #fff"] {
+  background-color: #1e1e1e !important;
+  color: #ffffff !important;
+  border-color: #333333 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) !important;
+}
+
+body.dark-mode input[type="text"] {
+  background-color: #2a2a2a !important;
+  color: #ffffff !important;
+  border-color: #444444 !important;
+}
+
+body.dark-mode div[style*="background: #f"] {
+  background-color: #252525 !important;
+  color: #cccccc !important;
+}
     </style>
 </head>
 <body>
@@ -110,6 +140,9 @@
 </a>
     <a href="https://x.com/Floofy_Chain" target="_blank" rel="noopener noreferrer" style="padding: 6px 12px; background-color: #0f1419; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500;">𝕏 Twitter</a>
 </div>
+        <button id="theme-toggle" onclick="toggleDarkMode()" style="background: #1e1e1e; color: #fff; border: 1px solid #444; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 5px;">
+  🌙 Dark
+</button>
         <div class="header-logo">
             <img src="Floofy_Icone.png" alt="Floofy Logo">
             <h2>Floofy Faucet</h2>
@@ -205,6 +238,25 @@
             }
         }
     </script>
+<script>
+  function toggleDarkMode() {
+    document.body.classList.toggle('dark-mode');
+    const btn = document.getElementById('theme-toggle');
+    if (document.body.classList.contains('dark-mode')) {
+      btn.innerHTML = '☀️ Light';
+      localStorage.setItem('theme', 'dark');
+    } else {
+      btn.innerHTML = '🌙 Dark';
+      localStorage.setItem('theme', 'light');
+    }
+  }
 
+  // Mantém a preferência guardada ao carregar a página
+  if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark-mode');
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.innerHTML = '☀️ Light';
+  }
+</script>
 </body>
 </html>
