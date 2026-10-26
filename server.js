@@ -9,6 +9,12 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Rota explícita para o robots.txt garantir acesso imediato aos crawlers
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send('User-agent: *\nAllow: /');
+});
+
 // Configuração da Base de Dados SQLite
 const db = new sqlite3.Database('./faucet.db', (err) => {
   if (err) console.error('Database connection error:', err);
