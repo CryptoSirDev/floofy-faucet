@@ -9,9 +9,10 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rota explícita para o robots.txt garantir acesso imediato aos crawlers
+// Rota explícita para o robots.txt com desativação de cache para crawlers
 app.get('/robots.txt', (req, res) => {
-  res.type('text/plain');
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.send('User-agent: *\nAllow: /');
 });
 
