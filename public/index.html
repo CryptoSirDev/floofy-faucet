@@ -232,10 +232,13 @@
                 const data = await response.json();
                 
                 msg.style.color = data.success ? 'green' : 'red';
-                msg.innerText = data.message;
 
-                if (data.success) {
+                if (data.success && data.txid) {
+                    const explorerUrl = `https://explorer.floofychain.com/tx/${data.txid}`;
+                    msg.innerHTML = `${data.message} <br><a href="${explorerUrl}" target="_blank" rel="noopener noreferrer" style="color: #28a745; text-decoration: underline; font-weight: bold;">TXID: ${data.txid.substring(0, 12)}...</a>`;
                     loadBalance();
+                } else {
+                    msg.innerText = data.message;
                 }
             } catch (e) {
                 msg.style.color = 'red';
