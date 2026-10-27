@@ -164,7 +164,12 @@ app.post('/api/request', async (req, res) => {
     await saveClaim(ipKey);
     await saveClaim(addrKey);
 
-    return res.json({ success: true, message: `Transaction sent successfully! TXID: ${txid}` });
+    // Devolve o sucesso acompanhado do TXID real gerado pela rede
+    return res.json({ 
+      success: true, 
+      message: 'Transaction sent successfully!', 
+      txid: txid 
+    });
 
   } catch (error) {
     console.error('Faucet error:', error);
