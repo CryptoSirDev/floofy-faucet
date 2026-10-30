@@ -94,6 +94,19 @@
         button:hover:not(:disabled) {
             background-color: #218838;
         }
+        .maintenance-banner {
+            display: none;
+            margin: 18px 0 8px;
+            padding: 18px 16px;
+            border: 1px solid #e4ad44;
+            border-radius: 10px;
+            background: #fff5dc;
+            color: #68460c;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+        .maintenance-banner strong { display: block; margin-bottom: 6px; font-size: 16px; }
+        body.dark-mode .maintenance-banner { background: #352b1c; border-color: #ad843b; color: #ffe2a1; }
         #msg {
             margin-top: 20px;
             font-weight: bold;
@@ -167,6 +180,11 @@
             <img src="/Floofy_Icone.png" alt="Floofy Logo">
             <h2>Floofy Faucet</h2>
         </div>
+        <div id="maintenance-banner" class="maintenance-banner" role="status" aria-live="polite">
+            <strong>🐹 FloofyChain Faucet — Temporarily Unavailable</strong>
+            ⚠️ The FloofyChain network is undergoing its v4 upgrade. Faucet payouts are temporarily paused until the new network is fully synchronized.
+            <div style="margin-top: 8px;">Thank you for your patience! 💙</div>
+        </div>
         <p>Submit your address to receive 10 FLOOF (1 claim per IP / 24h).</p>
         
         <div class="input-group">
@@ -205,6 +223,27 @@
 
     <!-- Scripts da Faucet -->
     <script>
+        let faucetPaused = true; // Fail closed until the backend confirms claims are enabled.
+        async function loadFaucetStatus() {
+            const btn = document.getElementById('claim-btn');
+            const banner = document.getElementById('maintenance-banner');
+            try {
+                const res = await fetch('/api/status', { cache: 'no-store' });
+                if (!res.ok) throw new Error('Status unavailable');
+                const data = await res.json();
+                if (typeof data.paused !== 'boolean') throw new Error('Invalid status');
+                faucetPaused = data.paused;
+            } catch {
+                faucetPaused = true;
+            }
+            btn.disabled = faucetPaused;
+            banner.style.display = faucetPaused ? 'block' : 'none';
+            return faucetPaused;
+        }
+
+        void loadFaucetStatus();
+        window.setInterval(() => { void loadFaucetStatus(); }, 60000);
+
         async function loadBalance() {
             try {
                 const res = await fetch('/api/balance');
@@ -222,6 +261,11 @@
         loadBalance();
 
         async function submitClaim() {
+            if (faucetPaused) {
+                document.getElementById('msg').style.color = '#aa6e15';
+                document.getElementById('msg').innerText = 'Faucet payouts are temporarily paused for the v4 network upgrade.';
+                return;
+            }
             const addressInput = document.getElementById('address');
             const btn = document.getElementById('claim-btn');
             const msg = document.getElementById('msg');
@@ -258,7 +302,7 @@
                 msg.style.color = 'red';
                 msg.innerText = 'Connection error.';
             } finally {
-                btn.disabled = false;
+                btn.disabled = faucetPaused;
             }
         }
     </script>
