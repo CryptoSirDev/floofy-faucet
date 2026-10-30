@@ -33,6 +33,19 @@ const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:18332';
 const RPC_USER = process.env.RPC_USER || 'rpcuser';
 const RPC_PASS = process.env.RPC_PASS || 'rpcpassword';
 
+
+// Temporary maintenance mode for the FloofyChain v4 network upgrade.
+// Payouts stay paused by default until explicitly re-enabled after the
+// updated Core node has fully synchronized and test payments are verified.
+const FAUCET_PAUSED = process.env.FAUCET_PAUSED !== 'false';
+const MAINTENANCE_MESSAGE =
+  'FloofyChain is undergoing its v4 network upgrade. Faucet payouts are temporarily paused until the updated network is fully synchronized. Thank you for your patience! 🐹💙';
+
+app.get('/api/status', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ paused: FAUCET_PAUSED, message: FAUCET_PAUSED ? MAINTENANCE_MESSAGE : '' });
+});
+
 // Memória temporária para bloqueio em tempo real
 const activeRequests = new Set();
 const memoryClaims = new Map(); // Fallback de memória para reforço de cooldown
@@ -69,6 +82,11 @@ app.get('/api/balance', async (req, res) => {
 });
 
 app.post('/api/request', async (req, res) => {
+  if (FAUCET_PAUSED) {
+    res.set('Cache-Control', 'no-store');
+    return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
+  }
+
   const address = req.body.address ? req.body.address.trim() : '';
 
   // Captura limpa e precisa do IP do cliente no Render
