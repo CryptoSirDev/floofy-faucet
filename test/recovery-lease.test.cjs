@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { acquireLease, renewLease, releaseLease, assertLease } = require('../lib/recovery-lease.cjs');
+const { acquireLease, renewLease, releaseLease, assertLease, normalizeLeaseEpoch } = require('../lib/recovery-lease.cjs');
 
 test('lease acquisition is a single conditional row update', () => {
   assert.match(acquireLease, /UPDATE faucet_payout_outbox/);
@@ -36,4 +36,21 @@ test('invalid states and missing leases fail closed', () => {
   assert.throws(() => assertLease(null, {}), /missing/);
   assert.throws(() => assertLease({ request_id: 'r1', lease_owner: 'w', lease_epoch: 1, status: 'confirmed' },
     { request_id: 'r1', lease_owner: 'w', lease_epoch: 1 }), /invalid/);
+});
+
+test('pg bigint string epoch matches safe numeric expected epoch', () => {
+  const lease = { request_id: 'r1', lease_owner: 'worker-1', lease_epoch: '42', status: 'uncertain' };
+  assert.equal(assertLease(lease, { request_id: 'r1', lease_owner: 'worker-1', lease_epoch: 42 }), true);
+  assert.equal(assertLease(lease, { request_id: 'r1', lease_owner: 'worker-1', lease_epoch: '42' }), true);
+  assert.throws(() => assertLease(lease, { request_id: 'r1', lease_owner: 'worker-1', lease_epoch: '43' }), /stale/);
+});
+
+test('malformed or unsafe PostgreSQL bigint epoch fails closed', () => {
+  for (const invalid of ['-1', '01', '1.0', '1e2', ' 2', '', '9007199254740992', -1, 1.5, NaN, Infinity, null, undefined]) {
+    assert.throws(() => normalizeLeaseEpoch(invalid), /Invalid lease epoch/);
+    assert.throws(() => assertLease(
+      { request_id: 'r1', lease_owner: 'w', lease_epoch: invalid, status: 'uncertain' },
+      { request_id: 'r1', lease_owner: 'w', lease_epoch: 1 }), /invalid/);
+  }
+  assert.equal(normalizeLeaseEpoch('9007199254740991'), Number.MAX_SAFE_INTEGER);
 });
