@@ -210,3 +210,7 @@ PostgreSQL `bigint` columns are returned as decimal strings by the default `pg` 
 `migrations/001_recoverable_payouts.sql` defines the reservation and payout-outbox tables, a recovery lease and epoch, and an index for recoverable statuses. It is **not** run by the production app and must **not** be applied to Contabo or any live database without reviewing existing schemas, migration history, constraints, rollback and backups. The additive `IF NOT EXISTS` statements support repeatable execution but do not validate or retrofit constraints on pre-existing tables.
 
 CI runs `test/postgres-migration.integration.test.cjs` in a disposable PostgreSQL database using an isolated test schema. It applies the migration twice, checks an atomic claim and confirms new outbox rows cannot reference nonexistent reservations. The existing gateway has not been integrated; real payments remain paused.
+
+### Offline recovery simulation
+
+`lib/recovery-simulator.cjs` combines the restart and reconciliation decision rules for an array of **synthetic** payout records. It never opens a database connection, queries Core, signs, broadcasts or writes any transaction. Missing or ambiguous evidence is held for review; verified confirmations are reported as `would-confirm` only, and mempool sightings as `would-observe` only. Duplicate request IDs and invalid durable records fail closed. Run `npm test` for the offline simulator tests. This is **not** a production recovery worker and does not authorize enabling faucet payouts.
