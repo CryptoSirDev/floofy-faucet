@@ -15,16 +15,8 @@ app.get('/robots.txt', (req, res) => {
   res.send('User-agent: *\nAllow: /');
 });
 
-// Durable reservations are staged in claim-store.js. Never use Render-local
-// SQLite as the source of truth for payout cooldowns.
-const claimStore = require('./claim-store');
-if (process.env.DATABASE_URL) {
-  claimStore.initialize().then(() => {
-    console.log('Persistent claim journal ready (staging only).');
-  }).catch(err => {
-    console.error('Persistent claim journal unavailable:', err.message);
-  });
-}
+// Claim reservations live in PostgreSQL on the VPS, never on Render.
+const { reserveClaim } = require('./gateway-claims');
 
 // FloofyChain VPS gateway. Never store Core RPC credentials in Render.
 const GATEWAY_URL = (process.env.GATEWAY_URL || '').replace(/\/$/, '');
@@ -107,8 +99,10 @@ app.post('/api/request', async (req, res) => {
       success: false, paused: true, message: MAINTENANCE_MESSAGE
     });
   }
-  // Future activation must atomically reserve IP/address cooldown in a
-  // persistent database BEFORE invoking gatewayPayment(randomUUID(), address).
+  // Future activation must call reserveClaim() before gatewayPayment().
+  // Do NOT reserve claims while paused: it would consume users' 24h quota.
+  // The helper is wired here for integration work, but deliberately unreachable.
+  void reserveClaim;
   return res.status(503).json({
     success: false, paused: true, message: MAINTENANCE_MESSAGE
   });
