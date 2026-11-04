@@ -39,4 +39,4 @@ jobs:
       - name: Install test-only PostgreSQL driver
         run: npm install --no-save --package-lock=false --ignore-scripts pg@8
       - name: Test isolated claim and lease integration against disposable PostgreSQL
-        run: node --test --test-concurrency=1 test/postgres-claim.integration.test.cjs test/postgres-lease.integration.test.cjs test/postgres-migration.integration.test.cjs test/postgres-stored-recovery.integration.test.cjs test/postgres-concurrent-recovery.integration.test.cjs test/postgres-crash-handover.integration.test.cjs
+        run: node --test --test-concurrency=1 test/postgres-claim.integration.test.cjs test/postgres-lease.integration.test.cjs test/postgres-migration.integration.test.cjs test/postgres-stored-recovery.integration.test.cjs test/postgres-concurrent-recovery.integration.test.cjs test/postgres-crash-handover.integration.test.cjs test/postgres-db-outage.integration.test.cjs
