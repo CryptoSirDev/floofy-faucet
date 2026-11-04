@@ -28,18 +28,25 @@ db.run(`CREATE TABLE IF NOT EXISTS faucet_claims (
   timestamp TEXT
 )`);
 
-// Configuração do Nó RPC local (via Ngrok)
-const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:18332';
-const RPC_USER = process.env.RPC_USER || 'rpcuser';
-const RPC_PASS = process.env.RPC_PASS || 'rpcpassword';
-
-
-// Temporary maintenance mode for the FloofyChain v4 network upgrade.
-// Payouts stay paused by default until explicitly re-enabled after the
-// updated Core node has fully synchronized and test payments are verified.
-const FAUCET_PAUSED = process.env.FAUCET_PAUSED !== 'false';
+// FloofyChain VPS gateway. Never store Core RPC credentials in Render.
+const GATEWAY_URL = (process.env.GATEWAY_URL || '').replace(/\/$/, '');
+const GATEWAY_API_KEY = process.env.GATEWAY_API_KEY || '';
+// Safety interlock: payments remain disabled until HTTPS, wallet and reconciliation tests pass.
+const FAUCET_PAUSED = true;
 const MAINTENANCE_MESSAGE =
-  'FloofyChain is undergoing its v4 network upgrade. Faucet payouts are temporarily paused until the updated network is fully synchronized. Thank you for your patience! 🐹💙';
+  'Faucet payouts are temporarily paused while the secure gateway migration is completed. Thank you for your patience! 🐹💙';
+
+async function gatewayGet(endpoint) {
+  if (!GATEWAY_URL.startsWith('https://') || !GATEWAY_API_KEY) {
+    throw new Error('Secure gateway not configured');
+  }
+  const response = await fetch(GATEWAY_URL + endpoint, {
+    headers: { 'X-API-Key': GATEWAY_API_KEY },
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error('Gateway unavailable');
+  return response.json();
+}
 
 app.get('/api/status', (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -50,154 +57,31 @@ app.get('/api/status', (req, res) => {
 const activeRequests = new Set();
 const memoryClaims = new Map(); // Fallback de memória para reforço de cooldown
 
-// Endpoint para consultar o saldo atual da carteira da Faucet
+// The small hot-wallet balance is NOT the main reserve balance.
+// Do not publish it as the ~1M FLOOF reserve.
 app.get('/api/balance', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const response = await fetch(RPC_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64'),
-        'ngrok-skip-browser-warning': 'true'
-      },
-      body: JSON.stringify({
-        jsonrpc: '1.0',
-        id: 'faucet-balance',
-        method: 'getbalance',
-        params: []
-      })
+    const data = await gatewayGet('/internal/balance');
+    return res.json({ success: true, balance: data.balance, balance_type: 'hot_wallet' });
+  } catch {
+    return res.status(503).json({
+      success: false,
+      error: 'Balance temporarily unavailable',
+      balance_type: 'hot_wallet'
     });
-
-    const data = await response.json();
-    if (data.error) {
-      console.error('RPC Node Error:', data.error.message);
-      return res.status(500).json({ success: false, error: data.error.message });
-    }
-
-    return res.json({ success: true, balance: data.result });
-  } catch (error) {
-    console.error('Fetch Balance Error Details:', error.message);
-    return res.status(500).json({ success: false, error: 'Erro ao ligar ao nó.' });
   }
 });
 
-app.post('/api/request', async (req, res) => {
-  if (FAUCET_PAUSED) {
-    res.set('Cache-Control', 'no-store');
-    return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
-  }
-
-  const address = req.body.address ? req.body.address.trim() : '';
-
-  // Captura limpa e precisa do IP do cliente no Render
-  let rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-  if (rawIp.includes(',')) {
-    rawIp = rawIp.split(',')[0].trim();
-  }
-  const clientIp = rawIp.replace(/^.*:/, ''); // Limpa formato IPv6/IPv4 mapeado
-
-  if (!address) {
-    return res.status(400).json({ success: false, message: 'Invalid address provided.' });
-  }
-
-  const ipKey = `ip_${clientIp}`;
-  const addrKey = `addr_${address}`;
-
-  // Prevenir Race Conditions (cliques múltiplos em milissegundos)
-  if (activeRequests.has(ipKey) || activeRequests.has(addrKey)) {
-    return res.status(429).json({ success: false, message: 'Too many requests. Please wait.' });
-  }
-
-  activeRequests.add(ipKey);
-  activeRequests.add(addrKey);
-
-  try {
-    const now = new Date();
-    const COOLDOWN = 24 * 60 * 60 * 1000; // 24 horas em milissegundos
-
-    const getClaim = (id) => {
-      return new Promise((resolve) => {
-        // Verificar primeiro em memória
-        if (memoryClaims.has(id)) {
-          return resolve({ timestamp: memoryClaims.get(id) });
-        }
-        // Consultar SQLite
-        db.get(`SELECT timestamp FROM faucet_claims WHERE identifier = ?`, [id], (err, row) => {
-          resolve(row);
-        });
-      });
-    };
-
-    // Verificar bloqueio de IP
-    const ipRow = await getClaim(ipKey);
-    if (ipRow && (now - new Date(ipRow.timestamp) < COOLDOWN)) {
-      const hoursLeft = Math.ceil((COOLDOWN - (now - new Date(ipRow.timestamp))) / (1000 * 60 * 60));
-      return res.status(429).json({ success: false, message: `IP limit reached. Please wait ${hoursLeft} hour(s).` });
-    }
-
-    // Verificar bloqueio de Endereço
-    const addrRow = await getClaim(addrKey);
-    if (addrRow && (now - new Date(addrRow.timestamp) < COOLDOWN)) {
-      const hoursLeft = Math.ceil((COOLDOWN - (now - new Date(addrRow.timestamp))) / (1000 * 60 * 60));
-      return res.status(429).json({ success: false, message: `Address limit reached. Please wait ${hoursLeft} hour(s).` });
-    }
-
-    // Enviar a transação via RPC
-    const rpcResponse = await fetch(RPC_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64'),
-        'ngrok-skip-browser-warning': 'true'
-      },
-      body: JSON.stringify({
-        jsonrpc: '1.0',
-        id: 'faucet',
-        method: 'sendtoaddress',
-        params: [address, 10.0]
-      })
-    });
-
-    const rpcData = await rpcResponse.json();
-
-    if (rpcData.error) {
-      return res.status(500).json({ success: false, message: 'RPC Error: ' + rpcData.error.message });
-    }
-
-    const txid = rpcData.result;
-    const isoDate = now.toISOString();
-
-    // Guardar em Memória e no SQLite
-    memoryClaims.set(ipKey, isoDate);
-    memoryClaims.set(addrKey, isoDate);
-
-    const saveClaim = (id) => {
-      return new Promise((resolve) => {
-        db.run(`INSERT INTO faucet_claims (identifier, timestamp) VALUES (?, ?) 
-                ON CONFLICT(identifier) DO UPDATE SET timestamp = ?`, 
-                [id, isoDate, isoDate], () => resolve());
-      });
-    };
-
-    await saveClaim(ipKey);
-    await saveClaim(addrKey);
-
-    // Devolve o sucesso acompanhado do TXID real gerado pela rede
-    return res.json({ 
-      success: true, 
-      message: 'Transaction sent successfully!', 
-      txid: txid 
-    });
-
-  } catch (error) {
-    console.error('Faucet error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to connect to local RPC node.' });
-  } finally {
-    setTimeout(() => {
-      activeRequests.delete(ipKey);
-      activeRequests.delete(addrKey);
-    }, 2000);
-  }
+// Deliberately disabled until the gateway's HTTPS endpoint and idempotent
+// payout integration have been tested end-to-end. No direct RPC fallback.
+app.post('/api/request', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return res.status(503).json({
+    success: false,
+    paused: true,
+    message: MAINTENANCE_MESSAGE
+  });
 });
 
 const PORT = process.env.PORT || 3000;
