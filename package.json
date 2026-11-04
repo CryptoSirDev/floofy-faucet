@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test gateway-claims.test.js payment-recovery.test.js"
+    "test": "node --test gateway-claims.test.js payment-recovery.test.js payout-state-machine.test.js"
   },
   "dependencies": {
     "express": "^4.19.2"
