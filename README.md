@@ -80,6 +80,111 @@ The request endpoint may broadcast a real payout when claims are enabled. Avoid 
 
 This is a community project, not an audited payment service. In particular, the existing application trusts proxy-provided IP information and uses SQLite plus an in-memory fallback for cooldown tracking. Before scaling production traffic, review trusted-proxy configuration, rate limiting, persistent database storage, input validation, and RPC access controls.
 
+
+## Recoverable payouts — development branch (NOT LIVE)
+
+> **Safety status:** The recovery architecture below is experimental and
+> **not integrated into the deployed faucet or VPS gateway**. Do not enable
+> payouts, merge or deploy this branch on the strength of passing tests.
+> The existing `FAUCET_PAUSED` setting must remain in its safe state until
+> the complete system has been audited and explicitly approved.
+
+This branch develops a recoverable, single-payment-per-reservation design.
+It is intended to address crashes, duplicate requests, uncertain RPC
+responses and competing recovery workers. Existing application behavior
+described above is not replaced by these modules yet.
+
+### Architecture and trust boundaries
+
+- **Render / frontend:** public UI and requests; no FloofyChain Core wallet
+  credentials should be present in browser code or public endpoints.
+- **Trusted gateway / VPS:** the intended authority for validating claims,
+  database state, payment identity, signing and reconciliation. The live
+  gateway source and schema still need a reviewed integration.
+- **Dedicated faucet Core:** the only node that should handle faucet wallet
+  signing, transaction broadcasting and authoritative chain evidence.
+  The personal Core and wallet must remain separate.
+- **PostgreSQL:** planned single transactional source of truth for
+  reservations and payout outbox. The currently deployed PostgreSQL and
+  SQLite arrangement is **not** automatically compatible with this design.
+
+### Safety modules
+
+| File | Purpose | Status |
+| --- | --- | --- |
+| `lib/reservation-authorization.cjs` | Validate a trusted reservation's request ID, address, amount, wallet, expiry and unused state | Pure guard; not wired |
+| `lib/atomic-claim.cjs` | Parameterized conditional reservation update and outbox insert | Reference SQL |
+| `lib/claim-once.cjs` | Begin/commit/rollback a claim and outbox insertion on one PostgreSQL connection | Adapter; not deployed |
+| `lib/payout-safety.cjs` | Enforce payment identity, immutable amounts and state transitions | Pure guard |
+| `lib/payout-outbox.cjs` | Require a durably stored signed raw transaction and TXID before planning broadcast | Pure planner |
+| `lib/payout-reconciliation.cjs` | Assess trusted chain evidence, conflicts and confirmation depth | Pure planner |
+| `lib/payout-restart.cjs` | Fail-closed restart decisions; never automatically resend an uncertain payment | Pure planner |
+| `lib/recovery-lease.cjs` | PostgreSQL recovery lease with monotonically increasing fencing epoch | Reference SQL; not wired |
+
+**Intended lifecycle:** `reserved → claimed → prepared → broadcast → confirmed`.
+Ambiguous RPC outcomes or inconsistent evidence must remain `uncertain`
+until independently reconciled. These are design states; there is not yet
+a complete live implementation. A prepared payout must persist the *exact*
+signed raw transaction and its matching TXID before any broadcast.
+Retries must never generate a different payment for the same request.
+Chain confirmation requires authoritative active-chain evidence (six
+confirmations in the current planner by default), not merely a mempool
+sighting. Reorganizations and conflicts require conservative handling.
+
+**Concurrency:** the reservation claim and outbox insertion must commit
+atomically in the same PostgreSQL database, with a unique request ID.
+Recovery leases allow one worker at a time to *attempt* recovery, and
+`lease_epoch` is intended to fence stale workers. Leases alone cannot
+guarantee exactly-once external RPC delivery: a lease may expire while
+a broadcast is in flight. Every state-changing database operation must
+validate the current lease and epoch, and Core state must be checked
+before any attempted rebroadcast.
+
+### Tests and GitHub Actions
+
+Run offline unit tests:
+
+```bash
+npm test
+```
+
+The `Payout safety checks` workflow runs these tests with Node.js 24.
+The `PostgreSQL claim integration` workflow creates a **disposable
+PostgreSQL 16** service and tests:
+
+- Eight concurrent requests for one reservation: only one may commit.
+- Eight competing recovery workers: only one may acquire a lease.
+- Lease renewal/release, replacement worker epochs and stale-worker rejection.
+
+The PostgreSQL integration tests are opt-in outside CI. They require
+the `pg` driver and `RUN_PG_INTEGRATION=1`; they refuse to run unless
+`PG_TEST_DATABASE=floofy_claim_test`. Use only a disposable database:
+the tests create tables and modify/delete test data. **Never point
+`DATABASE_URL` at production.** No integration test contacts the
+FloofyChain Core or sends real FLOOF.
+
+Passing CI demonstrates the tested properties in isolation; it does
+not prove that live gateway/database/RPC integration is safe.
+
+### Remaining work before any production activation
+
+1. Review and version-control the actual trusted VPS gateway implementation.
+2. Design and migrate the live database to one authoritative transactional
+   reservation/outbox schema, including unique IDs and lease columns.
+3. Ensure reservation address, amount and wallet identity are verified
+   server-side; enforce address validity using the dedicated faucet Core.
+4. Implement and test durable signing, TXID verification, broadcast and
+   read-only reconciliation adapters with safe crash recovery.
+5. Enforce fencing epochs and unexpired leases on **every** worker state
+   mutation, and handle ambiguous commits and RPC responses safely.
+6. Add end-to-end crash/restart, RPC timeout, chain reorganization,
+   balance-limit, cooldown, kill-switch and low-funds tests.
+7. Audit secrets, RPC network exposure and trusted-proxy/IP handling.
+8. Test with an isolated wallet and explicitly approve deployment before
+   enabling any live payouts.
+
+Detailed engineering notes: [docs/recoverable-payouts.md](docs/recoverable-payouts.md).
+
 ## Developer
 
 **Made by [CryptoSirDev](https://github.com/CryptoSirDev)** 💙
