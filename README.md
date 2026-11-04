@@ -226,3 +226,7 @@ CI runs `test/postgres-migration.integration.test.cjs` in a disposable PostgreSQ
 ### RPC reply-loss fault injection (offline only)
 
 `lib/ambiguous-send-simulator.cjs` models three deterministic outcomes for one previously persisted signed transaction: successful RPC reply, node acceptance followed by a lost reply, and disconnection before acceptance. It records an **imaginary** single send attempt and zero automatic retries. Missing evidence is held for manual review, not treated as proof of failed payment. `test/ambiguous-send-simulator.test.cjs` covers these cases without connecting to Core or broadcasting any FLOOF. This does **not** establish that the existing production `sendtoaddress` gateway has durable transaction preparation; integration remains pending.
+
+### Combined disconnect + restart fault injection
+
+`lib/disconnect-restart-simulator.cjs` models a gateway restart immediately after a simulated RPC send. It covers lost replies, disconnects before node acceptance, a crash before the updated outbox status is persisted (so the durable row remains `prepared`), and unavailable chain evidence. All restart decisions inspect or hold; the simulator makes zero additional send attempts. `test/disconnect-restart-simulator.test.cjs` covers these combinations using synthetic data only. This is not a live Core RPC or production crash-recovery test.
