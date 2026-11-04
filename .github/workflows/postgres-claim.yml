@@ -1,0 +1,42 @@
+name: PostgreSQL claim integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/recoverable-claims
+
+permissions:
+  contents: read
+
+jobs:
+  concurrent-claim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: floofy_claim_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d floofy_claim_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RUN_PG_INTEGRATION: '1'
+      PG_TEST_DATABASE: floofy_claim_test
+      DATABASE_URL: postgresql://testuser:testpassword@127.0.0.1:5432/floofy_claim_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install test-only PostgreSQL driver
+        run: npm install --no-save --package-lock=false --ignore-scripts pg@8
+      - name: Test real concurrent claims against disposable PostgreSQL
+        run: node --test test/postgres-claim.integration.test.cjs
