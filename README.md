@@ -222,3 +222,7 @@ CI runs `test/postgres-migration.integration.test.cjs` in a disposable PostgreSQ
 ### Concurrent worker crash simulation
 
 `test/postgres-concurrent-recovery.integration.test.cjs` uses a dedicated disposable PostgreSQL schema and eight simultaneous workers to verify that only one recovery lease is acquired. It simulates a crash by expiring the lease, checks that a replacement receives a higher fencing epoch and the stale worker cannot renew or release it, and verifies the read-only simulator neither resends nor mutates the stored payment. No live RPC, signing or payment code is exercised. This test is not a substitute for production gateway integration or an end-to-end recovery audit.
+
+### RPC reply-loss fault injection (offline only)
+
+`lib/ambiguous-send-simulator.cjs` models three deterministic outcomes for one previously persisted signed transaction: successful RPC reply, node acceptance followed by a lost reply, and disconnection before acceptance. It records an **imaginary** single send attempt and zero automatic retries. Missing evidence is held for manual review, not treated as proof of failed payment. `test/ambiguous-send-simulator.test.cjs` covers these cases without connecting to Core or broadcasting any FLOOF. This does **not** establish that the existing production `sendtoaddress` gateway has durable transaction preparation; integration remains pending.
