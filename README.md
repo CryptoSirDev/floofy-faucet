@@ -155,6 +155,12 @@ PostgreSQL 16** service and tests:
 - Eight concurrent requests for one reservation: only one may commit.
 - Eight competing recovery workers: only one may acquire a lease.
 - Lease renewal/release, replacement worker epochs and stale-worker rejection.
+- Lease expiry and takeover, expired-worker denial and invalid lease durations.
+
+Recovery leases are bounded to **1–3600 seconds** by SQL conditions;
+expired workers cannot renew or release a lease. The fencing epoch
+increments whenever a new worker acquires the record. This remains a
+reference implementation, not a production worker.
 
 The PostgreSQL integration tests are opt-in outside CI. They require
 the `pg` driver and `RUN_PG_INTEGRATION=1`; they refuse to run unless
