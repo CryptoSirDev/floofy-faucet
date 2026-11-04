@@ -200,3 +200,7 @@ Detailed engineering notes: [docs/recoverable-payouts.md](docs/recoverable-payou
 ## License
 
 No license file is currently included in this repository. All rights remain with their respective owners unless a license is added.
+
+### PostgreSQL fencing token compatibility
+
+PostgreSQL `bigint` columns are returned as decimal strings by the default `pg` driver. `normalizeLeaseEpoch` validates and converts only nonnegative, canonical decimal strings or safe integers; malformed or out-of-range values fail closed. `assertLease` compares normalized epochs, including when one side is a `pg` string and the other is a number. The SQL update remains the authoritative fencing check, not this in-memory guard. No live gateway or wallet integration is enabled by this change.
