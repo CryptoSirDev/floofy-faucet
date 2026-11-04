@@ -40,3 +40,23 @@ test('rejects HTTP gateway', async () => {
     ip:'192.0.2.1',address:'FTest',gatewayUrl:'http://127.0.0.1:3001',apiKey:'test-key',hashSecret:secret
   }),/HTTPS/);
 });
+
+const { clientIp } = require('./client-ip');
+test('client IP accepts IPv4 and IPv6, normalizes mapped IPv4', () => {
+  assert.equal(clientIp({ip:'192.0.2.4'}),'192.0.2.4');
+  assert.equal(clientIp({ip:'::ffff:192.0.2.4'}),'192.0.2.4');
+  assert.equal(clientIp({ip:'2001:db8::1'}),'2001:db8::1');
+});
+test('client IP rejects malformed or missing values', () => {
+  assert.throws(()=>clientIp({ip:'192.0.2.4, 10.0.0.1'}),/Invalid/);
+  assert.throws(()=>clientIp({headers:{'x-forwarded-for':'192.0.2.4'}}),/Missing/);
+});
+test('HMAC changes when secret changes', () => {
+  assert.notEqual(hashIdentifier('ip','192.0.2.4',secret),hashIdentifier('ip','192.0.2.4',secret+'different'));
+});
+test('reservation does not succeed on network error', async () => {
+  await assert.rejects(reserveClaim({
+    ip:'192.0.2.1',address:'FTest',gatewayUrl:'https://rpc.example.test',apiKey:'test-key',hashSecret:secret,
+    fetchImpl:async()=>{throw new Error('network offline');}
+  }),/network offline/);
+});
