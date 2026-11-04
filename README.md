@@ -204,3 +204,9 @@ No license file is currently included in this repository. All rights remain with
 ### PostgreSQL fencing token compatibility
 
 PostgreSQL `bigint` columns are returned as decimal strings by the default `pg` driver. `normalizeLeaseEpoch` validates and converts only nonnegative, canonical decimal strings or safe integers; malformed or out-of-range values fail closed. `assertLease` compares normalized epochs, including when one side is a `pg` string and the other is a number. The SQL update remains the authoritative fencing check, not this in-memory guard. No live gateway or wallet integration is enabled by this change.
+
+### Prototype PostgreSQL migration (test database only)
+
+`migrations/001_recoverable_payouts.sql` defines the reservation and payout-outbox tables, a recovery lease and epoch, and an index for recoverable statuses. It is **not** run by the production app and must **not** be applied to Contabo or any live database without reviewing existing schemas, migration history, constraints, rollback and backups. The additive `IF NOT EXISTS` statements support repeatable execution but do not validate or retrofit constraints on pre-existing tables.
+
+CI runs `test/postgres-migration.integration.test.cjs` in a disposable PostgreSQL database using an isolated test schema. It applies the migration twice, checks an atomic claim and confirms new outbox rows cannot reference nonexistent reservations. The existing gateway has not been integrated; real payments remain paused.
