@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { assertTransition, assertImmutablePayment } = require('../lib/payout-safety.cjs');
+const { assertTransition, assertImmutablePayment, assertChainEvidence } = require('../lib/payout-safety.cjs');
 
 const txid = 'a'.repeat(64);
 const base = { request_id: 'req-1', address: 'Fexample', amount: 10, wallet_id: 'faucet-core', txid, raw_tx: 'signedraw' };
@@ -23,7 +23,10 @@ test('uncertain never resolves without independent reconciliation', () => {
 
 test('cannot mark confirmed without chain evidence', () => {
   assert.throws(() => assertTransition('broadcast', 'confirmed', { txid }), /chain/);
-  assert.equal(assertTransition('broadcast', 'confirmed', { txid, chainConfirmed: true }), true);
+  assert.throws(() => assertTransition('broadcast', 'confirmed', { txid, chainConfirmed: true }), /Insufficient/);
+  assert.equal(assertTransition('broadcast', 'confirmed', {
+    txid, chainConfirmed: true, confirmations: 6, blockhash: 'b'.repeat(64), inActiveChain: true
+  }), true);
 });
 
 test('cannot transition backwards or resurrect confirmed payouts', () => {
@@ -41,4 +44,15 @@ test('recorded txid and signed transaction cannot be cleared or replaced', () =>
   assert.throws(() => assertImmutablePayment(base, { ...base, txid: null }), /txid/);
   assert.throws(() => assertImmutablePayment(base, { ...base, raw_tx: 'other' }), /raw/);
   assert.equal(assertImmutablePayment(base, { ...base }), true);
+});
+
+test('fork or reorg evidence fails closed', () => {
+  const evidence = { txid, blockhash: 'b'.repeat(64), confirmations: 6, inActiveChain: true };
+  assert.equal(assertChainEvidence(evidence), true);
+  assert.throws(() => assertChainEvidence({ ...evidence, confirmations: 0 }), /Insufficient/);
+  assert.throws(() => assertChainEvidence({ ...evidence, confirmations: -1 }), /Insufficient/);
+  assert.throws(() => assertChainEvidence({ ...evidence, confirmations: 5 }), /Insufficient/);
+  assert.throws(() => assertChainEvidence({ ...evidence, inActiveChain: false }), /Insufficient/);
+  assert.throws(() => assertChainEvidence({ ...evidence, blockhash: null }), /Insufficient/);
+  assert.throws(() => assertChainEvidence(evidence, 0), /Invalid/);
 });
