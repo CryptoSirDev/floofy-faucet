@@ -125,3 +125,7 @@ Core chain/mempool state; ambiguous outcomes remain uncertain. All
 writes must enforce owner+epoch+unexpired lease in SQL. This module
 does not implement a worker, lease acquisition execution, migrations,
 RPC or any live payment activity.
+
+## State-machine invariant hardening (offline prototype)
+
+The transition guard now **forbids `uncertain → prepared`** outright: an ambiguous payment cannot be re-prepared into a different signed transaction. `uncertain → broadcast` remains a guarded state annotation only, requiring literal `reconciled: true`, a valid recorded TXID and literal `sameRawTransaction: true`; it is not an RPC send authorization. Prepared-state persistence and chain confirmation flags also require literal booleans. Immutable payment identity, recorded TXID and raw bytes must still be enforced by the durable database adapter. This does not replace transaction-to-TXID cryptographic verification, real Core evidence validation, or production SQL constraints.
