@@ -16,10 +16,12 @@ test('lease renew requires current owner, epoch and non-expired lease', () => {
   assert.match(renewLease, /lease_owner = \$2/);
   assert.match(renewLease, /lease_epoch = \$3/);
   assert.match(renewLease, /lease_until > NOW\(\)/);
+  assert.ok(renewLease.includes('$4::integer BETWEEN 1 AND 3600'));
 });
 
 test('lease release requires current fencing token', () => {
   assert.match(releaseLease, /lease_owner = \$2/);
+  assert.match(releaseLease, /lease_until > NOW\(\)/);
   assert.match(releaseLease, /lease_epoch = \$3/);
 });
 
