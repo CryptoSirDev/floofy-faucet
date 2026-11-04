@@ -42,6 +42,8 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       assert.equal(Number(first.lease_epoch), 1);
       assert.equal((await pool.query(renewLease, [id, 'wrong-worker', first.lease_epoch, 60])).rowCount, 0);
       assert.equal((await pool.query(releaseLease, [id, 'wrong-worker', first.lease_epoch])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 0])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 3601])).rowCount, 0);
       assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 60])).rowCount, 1);
       assert.equal((await pool.query(releaseLease, [id, first.lease_owner, first.lease_epoch])).rowCount, 1);
       const second = await pool.query(acquireLease, [id, 'replacement-worker', 60]);
@@ -49,6 +51,14 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       assert.equal(Number(second.rows[0].lease_epoch), 2);
       assert.equal((await pool.query(releaseLease, [id, first.lease_owner, first.lease_epoch])).rowCount, 0);
       assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 60])).rowCount, 0);
+      assert.equal((await pool.query(acquireLease, [id, 'invalid-worker', 0])).rowCount, 0);
+      assert.equal((await pool.query(acquireLease, [id, 'invalid-worker', 3601])).rowCount, 0);
+      await pool.query("UPDATE faucet_payout_outbox SET lease_until=NOW()-interval '1 second' WHERE request_id=$1", [id]);
+      assert.equal((await pool.query(releaseLease, [id, 'replacement-worker', 2])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, 'replacement-worker', 2, 60])).rowCount, 0);
+      const afterExpiry = await pool.query(acquireLease, [id, 'post-expiry-worker', 60]);
+      assert.equal(afterExpiry.rowCount, 1);
+      assert.equal(Number(afterExpiry.rows[0].lease_epoch), 3);
     } finally {
       await pool.end();
     }
