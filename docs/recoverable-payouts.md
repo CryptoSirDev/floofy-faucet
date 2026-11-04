@@ -107,3 +107,21 @@ PostgreSQL integration tests and migrations are still required. The adapter
 must only receive server-validated payment identity, not raw HTTP input.
 On ambiguous COMMIT, inspect authoritative database state before retrying.
 Do not deploy or enable payments based solely on these tests.
+
+## Fenced recovery leases (2026-11-04)
+
+`lib/recovery-lease.cjs` contains **reference SQL only** for leasing
+recoverable outbox rows. The production schema does not yet have the
+required columns: `lease_owner` (text), `lease_until` (timestamptz)
+and `lease_epoch` (bigint NOT NULL DEFAULT 0). Recovery workers must
+acquire the lease atomically and use the returned fencing epoch for
+every durable state change. A worker with an old epoch must not write.
+Use bounded positive TTL values and a unique owner per worker instance.
+
+**Important:** a lease alone does NOT make external RPC broadcast
+exactly-once. The lease can expire while an RPC is in flight. Before
+broadcast, the adapter must re-check the persisted raw transaction and
+Core chain/mempool state; ambiguous outcomes remain uncertain. All
+writes must enforce owner+epoch+unexpired lease in SQL. This module
+does not implement a worker, lease acquisition execution, migrations,
+RPC or any live payment activity.
