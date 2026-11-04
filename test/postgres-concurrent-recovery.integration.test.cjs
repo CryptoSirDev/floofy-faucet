@@ -15,19 +15,15 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
     if (process.env.PG_TEST_DATABASE !== 'floofy_claim_test') {
       throw new Error('Refusing to run outside dedicated floofy_claim_test database');
     }
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
     const schema = 'floofy_concurrent_recovery_test';
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10, options: '-c search_path=' + schema });
     const sql = fs.readFileSync(path.join(__dirname, '../migrations/001_recoverable_payouts.sql'), 'utf8');
     const id = 'recovery_concurrent_12345';
     const txid = 'a'.repeat(64);
     try {
       await pool.query('CREATE SCHEMA IF NOT EXISTS ' + schema);
-      // Set each pooled connection search_path to the isolated test schema.
-      pool.on('connect', client => client.query('SET search_path TO ' + schema));
-      // Ensure all existing connections also target the isolated schema.
       const setup = await pool.connect();
       try {
-        await setup.query('SET search_path TO ' + schema);
         await setup.query(sql);
         await setup.query(`INSERT INTO faucet_reservations
           (request_id,address,amount_sat,wallet_id,status,expires_at)
