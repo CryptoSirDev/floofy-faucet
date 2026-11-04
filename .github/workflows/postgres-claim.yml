@@ -39,4 +39,4 @@ jobs:
       - name: Install test-only PostgreSQL driver
         run: npm install --no-save --package-lock=false --ignore-scripts pg@8
       - name: Test real concurrent claims against disposable PostgreSQL
-        run: node --test test/postgres-claim.integration.test.cjs
+        run: node --test test/postgres-claim.integration.test.cjs test/postgres-lease.integration.test.cjs
