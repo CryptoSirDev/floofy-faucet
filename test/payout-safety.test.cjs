@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { assertTransition, assertImmutablePayment, assertChainEvidence } = require('../lib/payout-safety.cjs');
 
 const txid = 'a'.repeat(64);
-const base = { request_id: 'req-1', address: 'Fexample', amount: 10, wallet_id: 'faucet-core', txid, raw_tx: 'signedraw' };
+const base = { request_id: 'req-1', address: 'Fexample', amount: 10, amount_sat: 1000000000, wallet_id: 'faucet-core', txid, raw_tx: 'signedraw' };
 
 test('preparing requires durable raw transaction evidence', () => {
   assert.throws(() => assertTransition('reserved', 'prepared', { txid }), /durable/);
@@ -35,7 +35,7 @@ test('cannot transition backwards or resurrect confirmed payouts', () => {
 });
 
 test('request, destination, amount and wallet cannot be changed', () => {
-  for (const field of ['request_id', 'address', 'amount', 'wallet_id']) {
+  for (const field of ['request_id', 'address', 'amount', 'amount_sat', 'wallet_id']) {
     assert.throws(() => assertImmutablePayment(base, { ...base, [field]: 'changed' }), /identity/);
   }
 });
