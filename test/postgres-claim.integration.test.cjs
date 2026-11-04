@@ -20,7 +20,6 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
     const address = 'F' + 'A'.repeat(33);
     const payment = { request_id, address, amount_sat: 1000000000, wallet_id: 'test-wallet' };
     try {
-      await pool.query('BEGIN'); // DDL below uses disposable, test-only database
       await pool.query(`CREATE TABLE IF NOT EXISTS faucet_reservations (
         request_id text PRIMARY KEY, address text NOT NULL, amount_sat bigint NOT NULL,
         wallet_id text NOT NULL, status text NOT NULL,
@@ -36,7 +35,6 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         (request_id,address,amount_sat,wallet_id,status,expires_at)
         VALUES ($1,$2,$3,$4,'reserved',NOW()+interval '1 hour')`,
         [request_id,address,payment.amount_sat,payment.wallet_id]);
-      await pool.query('COMMIT');
       const results = await Promise.allSettled(
         Array.from({ length: 8 }, () => claimOnce(pool, payment))
       );
