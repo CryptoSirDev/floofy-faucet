@@ -56,3 +56,37 @@ test('fork or reorg evidence fails closed', () => {
   assert.throws(() => assertChainEvidence({ ...evidence, blockhash: null }), /Insufficient/);
   assert.throws(() => assertChainEvidence(evidence, 0), /Invalid/);
 });
+
+test('uncertain payout cannot be prepared again, even with reconciliation flag', () => {
+  for (const reconciled of [true, false, 'true']) {
+    assert.throws(() => assertTransition('uncertain', 'prepared', {
+      txid, rawTxPersisted: true, reconciled
+    }), /Forbidden/);
+  }
+});
+
+test('reconciliation and raw-transaction proofs must be literal booleans', () => {
+  assert.throws(() => assertTransition('uncertain', 'broadcast', {
+    txid, reconciled: 'yes', sameRawTransaction: true
+  }), /reconciliation/);
+  assert.throws(() => assertTransition('uncertain', 'broadcast', {
+    txid, reconciled: true, sameRawTransaction: 'yes'
+  }), /recorded transaction|reuse/);
+  assert.throws(() => assertTransition('reserved', 'prepared', {
+    txid, rawTxPersisted: 'yes'
+  }), /durable/);
+  assert.throws(() => assertTransition('broadcast', 'confirmed', {
+    txid, chainConfirmed: 'yes', confirmations: 6,
+    blockhash: 'b'.repeat(64), inActiveChain: true
+  }), /chain/);
+});
+
+test('uncertain payout cannot change payment identity through immutable guard', () => {
+  for (const patch of [
+    { txid: 'b'.repeat(64) }, { raw_tx: 'different' },
+    { address: 'Fother' }, { amount_sat: 2000000000 },
+    { wallet_id: 'other-wallet' }, { request_id: 'other-id' }
+  ]) {
+    assert.throws(() => assertImmutablePayment(base, { ...base, ...patch }));
+  }
+});
