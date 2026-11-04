@@ -214,3 +214,7 @@ CI runs `test/postgres-migration.integration.test.cjs` in a disposable PostgreSQ
 ### Offline recovery simulation
 
 `lib/recovery-simulator.cjs` combines the restart and reconciliation decision rules for an array of **synthetic** payout records. It never opens a database connection, queries Core, signs, broadcasts or writes any transaction. Missing or ambiguous evidence is held for review; verified confirmations are reported as `would-confirm` only, and mempool sightings as `would-observe` only. Duplicate request IDs and invalid durable records fail closed. Run `npm test` for the offline simulator tests. This is **not** a production recovery worker and does not authorize enabling faucet payouts.
+
+### PostgreSQL-backed recovery simulation
+
+`lib/stored-recovery-simulator.cjs` reads committed outbox rows using a caller-provided PostgreSQL client and passes them to the offline decision engine. It performs only SELECT queries; simulated evidence is never authoritative chain data. `test/postgres-stored-recovery.integration.test.cjs` runs in an isolated disposable schema and checks that rows remain unchanged, that uncertain payments are held without evidence, and that missing signed transaction data fails closed. This is not a production worker or gateway integration.
