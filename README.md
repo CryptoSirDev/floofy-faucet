@@ -218,3 +218,7 @@ CI runs `test/postgres-migration.integration.test.cjs` in a disposable PostgreSQ
 ### PostgreSQL-backed recovery simulation
 
 `lib/stored-recovery-simulator.cjs` reads committed outbox rows using a caller-provided PostgreSQL client and passes them to the offline decision engine. It performs only SELECT queries; simulated evidence is never authoritative chain data. `test/postgres-stored-recovery.integration.test.cjs` runs in an isolated disposable schema and checks that rows remain unchanged, that uncertain payments are held without evidence, and that missing signed transaction data fails closed. This is not a production worker or gateway integration.
+
+### Concurrent worker crash simulation
+
+`test/postgres-concurrent-recovery.integration.test.cjs` uses a dedicated disposable PostgreSQL schema and eight simultaneous workers to verify that only one recovery lease is acquired. It simulates a crash by expiring the lease, checks that a replacement receives a higher fencing epoch and the stale worker cannot renew or release it, and verifies the read-only simulator neither resends nor mutates the stored payment. No live RPC, signing or payment code is exercised. This test is not a substitute for production gateway integration or an end-to-end recovery audit.
