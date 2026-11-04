@@ -53,3 +53,18 @@ retry `sendtoaddress` as a new payment.
 
 This branch remains **prototype-only**; production gateway unchanged,
 payments disabled, no claim that integration or CI tests have passed.
+
+## Reconciliation planner (2026-11-04)
+
+`lib/payout-reconciliation.cjs` is a pure decision function with tests.
+Only authenticated, independently fetched evidence from the dedicated faucet
+Core can authorize a `confirm` decision. Six active-chain confirmations are
+required by default. A mempool or wallet sighting produces only `observe`.
+Unknown, missing, mismatched, conflicted or reorged evidence produces
+`hold-uncertain`, never an instruction to send a new transaction.
+
+**Not yet integrated:** the adapter must fetch and cross-check txid, blockhash,
+confirmations, active-chain membership and conflicts; persist every state
+transition atomically; handle Core outages and chain reorganizations; and
+reconcile after restart. The caller must not supply evidence. Neither this
+planner nor its tests proves that the node supports the required RPC sequence.
