@@ -5,7 +5,7 @@ const { planBroadcast, planRpcFailure } = require('../lib/payout-outbox.cjs');
 
 const record = Object.freeze({
   request_id: 'request_123456789', address: 'F' + 'A'.repeat(33),
-  amount: 10, wallet_id: 'faucet-core', status: 'prepared',
+  amount: 10, amount_sat: 1000000000, wallet_id: 'faucet-core', status: 'prepared',
   txid: 'a'.repeat(64), raw_tx: 'deadbeef', raw_tx_persisted: true
 });
 
@@ -37,7 +37,7 @@ test('broadcast payout is inspected, not paid again', () => {
 
 test('payment identity or recorded txid/raw cannot change on retry', () => {
   for (const patch of [
-    { address: 'F' + 'B'.repeat(33) }, { amount: 11 },
+    { address: 'F' + 'B'.repeat(33) }, { amount: 11 }, { amount_sat: 2000000000 },
     { wallet_id: 'main-core' }, { request_id: 'different' },
     { txid: 'b'.repeat(64) }, { raw_tx: 'beef' }
   ]) {
