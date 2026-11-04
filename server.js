@@ -1,4 +1,5 @@
 const express = require('express');
+const { randomUUID } = require('node:crypto');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const app = express();
@@ -73,14 +74,50 @@ app.get('/api/balance', async (req, res) => {
   }
 });
 
-// Deliberately disabled until the gateway's HTTPS endpoint and idempotent
-// payout integration have been tested end-to-end. No direct RPC fallback.
-app.post('/api/request', (req, res) => {
+// Staging-only integration. This hardcoded interlock is intentionally not
+// configurable from Render: durable 24h cooldown and crash recovery must be
+// implemented before any payment is allowed.
+const PAYOUT_INTEGRATION_APPROVED = false;
+
+async function gatewayPayment(requestId, address) {
+  if (!GATEWAY_URL.startsWith('https://') || !GATEWAY_API_KEY) {
+    throw new Error('Secure gateway not configured');
+  }
+  const response = await fetch(GATEWAY_URL + '/internal/payment', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': GATEWAY_API_KEY
+    },
+    body: JSON.stringify({ request_id: requestId, address, amount: 10 }),
+    signal: AbortSignal.timeout(15000)
+  });
+  const data = await response.json();
+  return { httpStatus: response.status, data };
+}
+
+async function gatewayPaymentStatus(requestId) {
+  if (!/^[-a-zA-Z0-9_]{12,100}$/.test(requestId)) {
+    throw new Error('Invalid request ID');
+  }
+  return gatewayGet('/internal/payment-status?request_id=' +
+    encodeURIComponent(requestId));
+}
+
+// Prepared request route. Never fall back to direct Core RPC.
+// The payout call stays unreachable until durable claim journaling,
+// reconciliation, and wallet-unlock procedures are independently verified.
+app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
+  if (FAUCET_PAUSED || !PAYOUT_INTEGRATION_APPROVED) {
+    return res.status(503).json({
+      success: false, paused: true, message: MAINTENANCE_MESSAGE
+    });
+  }
+  // Future activation must atomically reserve IP/address cooldown in a
+  // persistent database BEFORE invoking gatewayPayment(randomUUID(), address).
   return res.status(503).json({
-    success: false,
-    paused: true,
-    message: MAINTENANCE_MESSAGE
+    success: false, paused: true, message: MAINTENANCE_MESSAGE
   });
 });
 
