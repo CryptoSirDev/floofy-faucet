@@ -68,3 +68,27 @@ confirmations, active-chain membership and conflicts; persist every state
 transition atomically; handle Core outages and chain reorganizations; and
 reconcile after restart. The caller must not supply evidence. Neither this
 planner nor its tests proves that the node supports the required RPC sequence.
+
+## Atomic claim/outbox reference (2026-11-04)
+
+`lib/atomic-claim.cjs` contains parameterized PostgreSQL reference
+statements and a fail-closed result check, plus tests. It does **not**
+execute SQL or migrate production. The example assumes trusted tables
+`faucet_reservations` and `faucet_payout_outbox`, both in the SAME
+PostgreSQL database, with a unique or primary key on `request_id`
+for the outbox. It is not compatible with the current separate
+PostgreSQL/SQLite deployment without a deliberate migration.
+
+An adapter must:
+1. BEGIN a PostgreSQL transaction.
+2. Conditionally UPDATE exactly one live, unused reservation matching
+   the server-verified request ID, address, satoshi amount and wallet.
+3. INSERT exactly one outbox record with `ON CONFLICT DO NOTHING`.
+4. Require both RETURNING results to match; otherwise ROLLBACK.
+5. COMMIT, then separately prepare/sign a transaction and durably persist
+   its exact raw bytes and txid before broadcasting. If the COMMIT result
+   is ambiguous, inspect durable state before retrying; never pay on guesswork.
+
+**Not sufficient for payments:** production schema migration, DB adapter,
+locking/concurrency integration tests against real PostgreSQL, signing RPC
+capability audit, outbox crash recovery, and reconciliation remain outstanding.
