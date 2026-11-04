@@ -6,7 +6,7 @@ const { acquireLease, renewLease, releaseLease, assertLease } = require('../lib/
 test('lease acquisition is a single conditional row update', () => {
   assert.match(acquireLease, /UPDATE faucet_payout_outbox/);
   assert.match(acquireLease, /lease_epoch = lease_epoch \+ 1/);
-  assert.match(acquireLease, /lease_until < NOW\(\)/);
+  assert.match(acquireLease, /lease_until <= NOW\(\)/);
   assert.match(acquireLease, /status IN \('prepared', 'broadcast', 'uncertain'\)/);
   assert.match(acquireLease, /\\$3::integer BETWEEN 1 AND 3600/);
   assert.match(acquireLease, /RETURNING request_id/);
