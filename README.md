@@ -120,6 +120,7 @@ described above is not replaced by these modules yet.
 | `lib/payout-reconciliation.cjs` | Assess trusted chain evidence, conflicts and confirmation depth | Pure planner |
 | `lib/payout-restart.cjs` | Fail-closed restart decisions; never automatically resend an uncertain payment | Pure planner |
 | `lib/recovery-lease.cjs` | PostgreSQL recovery lease with monotonically increasing fencing epoch | Reference SQL; not wired |
+| `lib/fenced-recovery.cjs` | Fenced, conditional transition from broadcast to uncertain without sending funds | Reference SQL; not wired |
 
 **Intended lifecycle:** `reserved → claimed → prepared → broadcast → confirmed`.
 Ambiguous RPC outcomes or inconsistent evidence must remain `uncertain`
@@ -156,6 +157,7 @@ PostgreSQL 16** service and tests:
 - Eight competing recovery workers: only one may acquire a lease.
 - Lease renewal/release, replacement worker epochs and stale-worker rejection.
 - Lease expiry and takeover, expired-worker denial and invalid lease durations.
+- Recovery state mutation requires current lease owner, fencing epoch, non-expired lease and matching TXID; stale or expired workers are rejected.
 
 Recovery leases are bounded to **1–3600 seconds** by SQL conditions;
 expired workers cannot renew or release a lease. The fencing epoch
