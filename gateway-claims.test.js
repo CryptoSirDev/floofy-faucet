@@ -60,3 +60,37 @@ test('reservation does not succeed on network error', async () => {
     fetchImpl:async()=>{throw new Error('network offline');}
   }),/network offline/);
 });
+
+test('rejects credential-bearing, path and query gateway URLs', async () => {
+  for (const gatewayUrl of [
+    'https://user:password@rpc.example.test',
+    'https://rpc.example.test/other',
+    'https://rpc.example.test/?token=abc',
+    'https://rpc.example.test/#fragment',
+    'https://rpc.example.test.evil.invalid/path'
+  ]) {
+    await assert.rejects(reserveClaim({
+      ip:'192.0.2.1',address:'FTest',gatewayUrl,apiKey:'test-key',hashSecret:secret,
+      fetchImpl:async()=>{throw new Error('must not fetch');}
+    }),/HTTPS gateway origin required/);
+  }
+});
+test('concurrent reservations accept at most one for same IP in simulated gateway', async () => {
+  const seen=new Set();
+  const fetchImpl=async (_url,options)=>{
+    const {ip_hash}=JSON.parse(options.body);
+    if(seen.has(ip_hash)) return {status:429,json:async()=>({allowed:false})};
+    seen.add(ip_hash);
+    return {status:201,json:async()=>({allowed:true,request_id:'00000000-0000-4000-8000-000000000001'})};
+  };
+  const outcomes=await Promise.all(Array.from({length:12},(_,i)=>reserveClaim({
+    ip:'192.0.2.8',address:'FAddress'+i,gatewayUrl:'https://rpc.example.test',apiKey:'test-key',hashSecret:secret,fetchImpl
+  })));
+  assert.equal(outcomes.filter(o=>o.allowed).length,1);
+});
+test('rejects malformed accepted reservation IDs', async () => {
+  await assert.rejects(reserveClaim({
+    ip:'192.0.2.1',address:'FTest',gatewayUrl:'https://rpc.example.test',apiKey:'test-key',hashSecret:secret,
+    fetchImpl:async()=>({status:201,json:async()=>({allowed:true,request_id:'not-a-uuid'})})
+  }),/Unexpected claim response/);
+});
