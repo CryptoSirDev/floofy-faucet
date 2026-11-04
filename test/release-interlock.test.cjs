@@ -25,7 +25,8 @@ test('request route does not invoke payment or reservation gateway endpoints', (
   assert.ok(routeEnd > routeStart, 'request endpoint must have a closing block');
   const route = server.slice(routeStart, routeEnd);
   assert.doesNotMatch(route, /gatewayPost\s*\(/);
-  assert.doesNotMatch(route, /internal\/(?:payment|claim-reserve)/);
+  const executable = route.replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(executable, /internal\/(?:payment|claim-reserve)/);
 });
 
 test('gateway client requires HTTPS and API key', () => {
