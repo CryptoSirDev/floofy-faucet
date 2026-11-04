@@ -1,6 +1,4 @@
 const express = require('express');
-const { randomUUID } = require('node:crypto');
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const app = express();
 
@@ -17,17 +15,16 @@ app.get('/robots.txt', (req, res) => {
   res.send('User-agent: *\nAllow: /');
 });
 
-// Configuração da Base de Dados SQLite
-const db = new sqlite3.Database('./faucet.db', (err) => {
-  if (err) console.error('Database connection error:', err);
-  else console.log('Connected to SQLite database.');
-});
-
-// Criar tabela de controlo de claims
-db.run(`CREATE TABLE IF NOT EXISTS faucet_claims (
-  identifier TEXT PRIMARY KEY,
-  timestamp TEXT
-)`);
+// Durable reservations are staged in claim-store.js. Never use Render-local
+// SQLite as the source of truth for payout cooldowns.
+const claimStore = require('./claim-store');
+if (process.env.DATABASE_URL) {
+  claimStore.initialize().then(() => {
+    console.log('Persistent claim journal ready (staging only).');
+  }).catch(err => {
+    console.error('Persistent claim journal unavailable:', err.message);
+  });
+}
 
 // FloofyChain VPS gateway. Never store Core RPC credentials in Render.
 const GATEWAY_URL = (process.env.GATEWAY_URL || '').replace(/\/$/, '');
@@ -53,10 +50,6 @@ app.get('/api/status', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ paused: FAUCET_PAUSED, message: FAUCET_PAUSED ? MAINTENANCE_MESSAGE : '' });
 });
-
-// Memória temporária para bloqueio em tempo real
-const activeRequests = new Set();
-const memoryClaims = new Map(); // Fallback de memória para reforço de cooldown
 
 // The small hot-wallet balance is NOT the main reserve balance.
 // Do not publish it as the ~1M FLOOF reserve.
