@@ -92,3 +92,18 @@ An adapter must:
 **Not sufficient for payments:** production schema migration, DB adapter,
 locking/concurrency integration tests against real PostgreSQL, signing RPC
 capability audit, outbox crash recovery, and reconciliation remain outstanding.
+
+## Transaction adapter and simulated concurrency (2026-11-04)
+
+`lib/claim-once.cjs` now provides an injected PostgreSQL client adapter:
+BEGIN, conditional reservation UPDATE, unique outbox INSERT, checked
+RETURNING results, COMMIT or ROLLBACK, and connection release. It has
+**no RPC or broadcast capability**. The tests use a serialized mock to
+simulate two simultaneous claims and inject insert/commit failures.
+
+**Limitations:** the mock does not exercise PostgreSQL locking, isolation,
+constraint behavior, crash recovery or actual database durability. Real
+PostgreSQL integration tests and migrations are still required. The adapter
+must only receive server-validated payment identity, not raw HTTP input.
+On ambiguous COMMIT, inspect authoritative database state before retrying.
+Do not deploy or enable payments based solely on these tests.
