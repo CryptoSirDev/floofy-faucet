@@ -26,3 +26,30 @@ Status: **NOT ENABLED**. This branch intentionally leaves `/api/request` paused.
 ## Next implementation step
 
 Bring the VPS gateway code under version control in a separate reviewed directory/repository, then implement the server-side reservation binding and deterministic transaction preparation. Do not deploy the uploaded gateway `server.js` unchanged with `PAYMENTS_ENABLED=true`.
+
+## Reservation authorization guard (2026-11-04)
+
+The branch now includes `lib/reservation-authorization.cjs` and
+`test/reservation-authorization.test.cjs`. This pure guard checks a trusted
+reservation's request ID, exact destination, satoshi amount, faucet wallet ID,
+reserved status, unused marker and expiry. It **does not** itself fetch,
+authenticate, lock, or consume a reservation.
+
+**Integration prerequisite:** change the PostgreSQL reservation schema and
+reservation creation API to persist exact `address`, `amount_sat`,
+`wallet_id`, `status`, `consumed_at`, and `expires_at_ms` values in
+trusted server-side storage. The existing IP/address hashes alone cannot
+prove the destination or amount. Bind the authenticated payment request to
+that row; do not accept these reservation fields from the HTTP caller.
+
+Within one database transaction, lock the reservation row (e.g. SELECT FOR
+UPDATE), verify the guard, atomically mark it consumed/claimed and establish
+a unique durable payout journal record. Coordinate PostgreSQL and the payout
+journal carefully: two independent databases do not provide atomicity
+automatically. Prefer one authoritative transaction boundary or an explicit
+recoverable outbox protocol. Do not broadcast until the signed raw transaction
+and txid are durable. On any ambiguous outcome, stop and reconcile; never
+retry `sendtoaddress` as a new payment.
+
+This branch remains **prototype-only**; production gateway unchanged,
+payments disabled, no claim that integration or CI tests have passed.
