@@ -1,0 +1,24 @@
+name: Payout safety checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/recoverable-claims
+
+permissions:
+  contents: read
+
+jobs:
+  payout-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Run offline safety unit tests
+        run: npm test
