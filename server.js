@@ -2,6 +2,7 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { createHmac } = require('node:crypto');
+const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
 const app = express();
 
 // Ativar trust proxy para obter o IP real do utilizador no Render
@@ -116,10 +117,7 @@ async function gatewayPost(endpoint, payload) {
 // the destination with Core and derives address_hash itself. Never accept
 // ip_hash, amount or wallet_id supplied by a browser.
 function buildBoundClaimPayload(ip, address) {
-  if (typeof ip !== 'string' || !ip.trim()) throw new Error('Missing trusted request IP');
-  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address))
-    throw new Error('Invalid FLOOF address format');
-  return Object.freeze({ ip_hash: claimHash(ip), address });
+  return renderClaimPayload({ ip, address, secret: CLAIM_HASH_SECRET });
 }
 
 // Development-only integration helper, intentionally not exposed as a public
