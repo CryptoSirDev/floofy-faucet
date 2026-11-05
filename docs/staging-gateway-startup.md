@@ -16,7 +16,7 @@ Start the mock in one terminal: `node gateway/mock-core.mjs`. It only accepts `v
 
 Start the gateway in a separate terminal: `node gateway/server-v2.mjs`. It binds only to `127.0.0.1:3002`, requires an authenticated API key for internal endpoints, and refuses to start with payments enabled or a non-staging DB name.
 
-The current staging candidate intentionally returns 503 for `/internal/payment`, `/internal/payment-status` and `/internal/reserve-balance`. A successful claim consumption creates a PostgreSQL outbox record in state `claimed`; it **does not** pay FLOOF.
+The current staging candidate intentionally returns 503 for `/internal/payment`, `/internal/payment-status` and `/internal/reserve-balance`. The authenticated read-only `GET /internal/payout-inspect?request_id=<uuid>` queries durable prepared/broadcast/uncertain records against the mock Core and returns `hold-no-retry`; confirmed records return `terminal-no-retry` without contacting Core. A newly consumed `claimed` record has no signed transaction to inspect and returns 503. This endpoint never signs or sends. A successful claim consumption creates a PostgreSQL outbox record in state `claimed`; it **does not** pay FLOOF.
 
 ## Important limitations before running
 
@@ -25,4 +25,4 @@ The current staging candidate intentionally returns 503 for `/internal/payment`,
 - Do not expose port 3002 or 16664 through Nginx, firewall, Render or public DNS.
 - Do not copy production API secrets or wallet credentials into an untrusted test machine.
 - The Render public `/api/request` route is still paused and cannot drive this instance until its reviewed integration is completed.
-- A real payment needs a separate durable transaction-preparation/broadcast/reconciliation worker, which has not been implemented.
+- A gated payout worker and wallet-signing adapter exist in `lib/`, but are not mounted in this gateway. Signing and broadcasting remain disabled; live Core RPC compatibility and end-to-end recovery are not validated.
