@@ -66,7 +66,7 @@ test('rolls back when bound reservation insert fails', async () => {
 test('ambiguous commit is not retried', async () => {
   const pool = fakePool({ failCommit: true });
   await assert.rejects(reserveBound(pool, input), /ambiguous commit/);
-  assert.equal(pool.calls.filter(c => c.sql === 'INSERT INTO public.faucet_claim_reservations').length, 1);
+  assert.equal(pool.calls.filter(c => c.sql.includes('INSERT INTO public.faucet_claim_reservations')).length, 1);
 });
 
 test('rejects malformed reservation data before connecting', async () => {
