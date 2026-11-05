@@ -49,3 +49,20 @@ test('invalid secret and identity fail before connecting', async () => {
   await assert.rejects(journalClaim(pool, { ...identity, amount_sat: 0 }), /Invalid trusted payment identity/);
   assert.deepEqual(pool.calls, []);
 });
+
+test('rejects malformed UUID without contacting database', async () => {
+  const pool = fakePool();
+  await assert.rejects(journalClaim(pool, { ...identity, request_id: 'z'.repeat(36) }), /Invalid trusted payment identity/);
+  assert.deepEqual(pool.calls, []);
+});
+test('rollback failure is reported as an ambiguous state', async () => {
+  const pool = { connect: async () => ({
+    query: async sql => {
+      if (sql.startsWith('UPDATE')) return { rows: [] };
+      if (sql === 'ROLLBACK') throw Error('database connection lost');
+      return { rows: [] };
+    },
+    release() {}
+  }) };
+  await assert.rejects(journalClaim(pool, identity), AggregateError);
+});
