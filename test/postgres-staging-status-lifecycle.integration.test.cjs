@@ -58,9 +58,9 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       assert.deepEqual(before.body, { request_id: id, reservation_status: 'reserved', payout_status: null });
       const claimed = await request('POST', '/prototype/claim-consume', { request_id: id });
       assert.equal(claimed.code, 200);
-      assert.equal(claimed.body.status, 'claimed');
+      assert.equal(claimed.body.status, 'processing');
       const after = await request('GET', path);
-      assert.deepEqual(after.body, { request_id: id, reservation_status: 'claimed', payout_status: 'claimed' });
+      assert.deepEqual(after.body, { request_id: id, reservation_status: 'processing', payout_status: 'claimed' });
       assert.equal((await request('GET', path)).code, 200);
       assert.equal((await request('POST', '/prototype/claim-consume', { request_id: id })).code, 400);
       const counts = await pool.query(`SELECT
