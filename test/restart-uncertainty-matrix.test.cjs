@@ -7,7 +7,7 @@ const { decideRestartRecovery } = require('../lib/restart-recovery-decision.cjs'
 const txid = 'a'.repeat(64);
 const raw_tx = 'ab'.repeat(150);
 const request_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const persisted = Object.freeze({ request_id, txid, raw_tx, address: 'F' + 'A'.repeat(33), amount_sat: 1000000000, wallet_id: 'staging-wallet' });
+const persisted = Object.freeze({ request_id, txid, raw_tx, address: 'F' + 'A'.repeat(33), amount_sat: 1000000000, wallet_id: 'staging-wallet', raw_tx_persisted: true });
 
 test('restarts cannot automatically create replacement payments for uncertain states', () => {
   for (const status of ['claimed', 'reserved']) {
