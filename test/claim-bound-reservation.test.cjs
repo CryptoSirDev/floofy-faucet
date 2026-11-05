@@ -68,7 +68,7 @@ test('ambiguous commit fails closed and is not retried', async () => {
   const pool = poolWith({ failCommit: true });
   await assert.rejects(claimBoundReservation(pool, payment), /ambiguous commit/);
   assert.equal(pool.calls.filter(c => c.sql === 'COMMIT').length, 1);
-  assert.ok(!pool.calls.some(c => c.sql.includes('UPDATE public.faucet_claim_reservations')));
+  assert.equal(pool.calls.filter(c => c.sql.includes('UPDATE public.faucet_claim_reservations')).length, 1);
 });
 
 test('rejects malformed or unsafe payment identity before connecting', async () => {
