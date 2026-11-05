@@ -25,10 +25,10 @@ if (env.PAYMENTS_ENABLED !== 'false' || env.GATEWAY_V2_STAGING !== 'true')
   throw Error('Gateway v2 refuses live payment configuration');
 for (const name of ['GATEWAY_API_KEY','RPC_USER','RPC_PASS','RPC_URL'])
   if (!env[name]) throw Error('Missing '+name);
-if (!/^http:\/\/127\.0\.0\.1:6664\/?$/.test(env.RPC_URL))
-  throw Error('Faucet Core RPC must be loopback only');
+if (env.RPC_URL !== 'http://127.0.0.1:16664')
+  throw Error('Staging requires dedicated mock Core on port 16664; live Core is forbidden');
 const apiKey=Buffer.from(env.GATEWAY_API_KEY);
-const db=new DatabaseSync('/var/lib/floofy-rpc-gateway/payments.sqlite', { readOnly:true });
+const db=new DatabaseSync('/var/lib/floofy-rpc-gateway/staging-payments.sqlite', { readOnly:true });
 const lookup=db.prepare('SELECT request_id,address,amount_sat,status,txid,created_at FROM payout_v2 WHERE request_id=?');
 const respond=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
 const authorized=req=>{const v=req.headers['x-api-key'];const b=Buffer.from(typeof v==='string'?v:'');return b.length===apiKey.length&&timingSafeEqual(b,apiKey);};
@@ -70,15 +70,8 @@ const server=http.createServer(async(req,res)=>{
     return respond(res,200,{status:'ok',payments_enabled:false,mode:'staging'});
   if(!allowed.has(path))return respond(res,404,{error:'Not found'});
   if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
-  if(req.method==='GET'&&path==='/internal/reserve-balance'&&req.url===path){
-    try{const data=JSON.parse(readFileSync('/run/floofy-public-balance/reserve.json','utf8'));
-      const updated=Date.parse(data.updated_at);
-      if(typeof data.balance!=='number'||!Number.isFinite(data.balance)||data.balance<0||
-        !Number.isFinite(updated)||updated>Date.now()+30000||Date.now()-updated>180000)
-        throw Error('Stale balance');
-      return respond(res,200,{balance:data.balance,balance_type:'main_reserve',updated_at:data.updated_at});
-    }catch{return respond(res,503,{error:'Reserve balance unavailable'});}
-  }
+  if(req.method==='GET'&&path==='/internal/reserve-balance'&&req.url===path)
+    return respond(res,503,{error:'Reserve balance unavailable in isolated staging'});
   if(req.method==='GET'&&path==='/internal/balance'&&req.url===path){
     try{return respond(res,200,{balance:await rpc('getbalance')});}
     catch{return respond(res,503,{error:'Balance unavailable'});}
