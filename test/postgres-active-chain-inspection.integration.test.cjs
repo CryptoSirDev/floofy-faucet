@@ -20,7 +20,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         updated_at timestamptz NOT NULL DEFAULT clock_timestamp())`);
       await pool.query(`INSERT INTO public.faucet_payout_outbox
         (request_id,address,amount_sat,wallet_id,status,raw_tx,txid)
-        VALUES ($1,$2,1000000000,'test-wallet','prepared','deadbeef',$3)`,
+        VALUES ($1,$2,1000000000,'test-wallet','broadcast','deadbeef',$3)`,
         [id, 'F' + 'A'.repeat(33), txid]);
       const baseline = (await pool.query('SELECT * FROM public.faucet_payout_outbox WHERE request_id=$1', [id])).rows[0];
       const responses = {
