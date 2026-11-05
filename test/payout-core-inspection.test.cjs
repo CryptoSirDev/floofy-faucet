@@ -21,6 +21,10 @@ const fixture = () => ({
   txid, address, amountSat: 100000000n, feeSat: 100000n,
   maxFeeSat: 200000n, trustedChangeScripts: [script],
   rpc: async (method, params) => {
+    if (method === 'listunspent') return [{
+      txid: prevTxid, vout: 0, amount: 1.251, confirmations: 12,
+      spendable: true, solvable: true, safe: true, scriptPubKey: script
+    }];
     assert.equal(method, 'gettxout');
     assert.deepEqual(params, [prevTxid, 0, true]);
     return { value: 1.251, confirmations: 12, coinbase: false,
@@ -35,7 +39,8 @@ test('checks Core UTXO then validates payout outputs and fee', async () => {
 });
 test('rejects missing UTXO without accepting payout', async () => {
   const f = fixture();
-  f.rpc = async () => null;
+  const original = f.rpc;
+  f.rpc = async (method, params) => method === 'gettxout' ? null : original(method, params);
   await assert.rejects(inspectPayoutWithCore(f), /not currently unspent/);
 });
 test('rejects unauthorized change', async () => {
@@ -49,4 +54,13 @@ test('rejects fee above policy', async () => {
   f.maxFeeSat = 99999n;
   const result = await inspectPayoutWithCore(f);
   assert.equal(result.valid, false);
+});
+
+test('rejects a Core UTXO amount inconsistent with wallet inventory', async () => {
+  const f = fixture();
+  const original = f.rpc;
+  f.rpc = async (method, params) => method === 'gettxout'
+    ? { value: 1.252, confirmations: 12, coinbase: false, scriptPubKey: { hex: script } }
+    : original(method, params);
+  await assert.rejects(inspectPayoutWithCore(f), /amount mismatch/);
 });
