@@ -59,6 +59,7 @@ jobs:
             test/postgres-ambiguous-preparation.integration.test.cjs
             test/postgres-active-chain-inspection.integration.test.cjs
             test/postgres-transition-fencing-audit.integration.test.cjs
+            test/postgres-expired-lease-handover.integration.test.cjs
           )
           for test_file in "${tests[@]}"; do
             echo "::group::${test_file} (fresh database)"
