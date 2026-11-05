@@ -112,6 +112,25 @@ async function gatewayPost(endpoint, payload) {
   const data = await response.json();
   return { status: response.status, data };
 }
+// Gateway v2 contract: Render computes the IP fingerprint; the gateway validates
+// the destination with Core and derives address_hash itself. Never accept
+// ip_hash, amount or wallet_id supplied by a browser.
+function buildBoundClaimPayload(ip, address) {
+  if (typeof ip !== 'string' || !ip.trim()) throw new Error('Missing trusted request IP');
+  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address))
+    throw new Error('Invalid FLOOF address format');
+  return Object.freeze({ ip_hash: claimHash(ip), address });
+}
+
+// Development-only integration helper, intentionally not exposed as a public
+// HTTP route and never called while the faucet is paused.
+async function reserveBoundClaimFromRender(req, address) {
+  if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED)
+    throw new Error('Faucet integration not approved');
+  const payload = buildBoundClaimPayload(req.ip, address);
+  return gatewayPost('/internal/claim-reserve', payload);
+}
+
 app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED) {
