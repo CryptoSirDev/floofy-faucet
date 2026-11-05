@@ -2,11 +2,12 @@
 // Read-only balances + authenticated bound-claim staging; NO sendtoaddress.
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
-import { timingSafeEqual, createHash } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { createClaimRoutes } = require('./claim-routes-v2.cjs');
+const { gatewayBoundIdentity } = require('../lib/claim-wire-contract.cjs');
 // Refuse to open any database or wallet until the isolated staging target is checked.
 const databaseEnv = readFileSync('/opt/floofy-rpc-gateway/database.env', 'utf8');
 const databaseLine = databaseEnv.split(/\r?\n/).find(x => x.startsWith('DATABASE_URL='));
@@ -56,12 +57,10 @@ async function readBody(req) {
 // Hash trust and origin binding MUST be reviewed before live deployment.
 const routes=createClaimRoutes({pool,expectedWalletId:walletId,expectedAmountSat:amountSat,
   policy:{async resolveReservation({input}){
-    if(!HASH.test(input.ip_hash)||!ADDRESS.test(input.address))
-      throw Error('Invalid claim identity');
-    const result=await rpc('validateaddress',[input.address]);
+    const trusted = gatewayBoundIdentity(input, {walletId, amountSat});
+    const result=await rpc('validateaddress',[trusted.address]);
     if(!result?.isvalid)throw Error('Invalid chain address');
-    return {ip_hash:input.ip_hash,address_hash:createHash('sha256').update(input.address).digest('hex'),
-      address:input.address,amount_sat:amountSat,wallet_id:walletId};
+    return trusted;
   }}});
 const allowed=new Set(['/internal/balance','/internal/reserve-balance','/internal/payment',
   '/internal/payment-status','/internal/claim-reserve','/internal/claim-consume','/internal/claim-status']);
