@@ -14,6 +14,7 @@ test('staging cannot serve any production gateway route or invoke payout policy'
   let policyCalls = 0;
   let dbCalls = 0;
   const pool = {
+    options: { database: 'floofy_claim_test' },
     connect() { dbCalls++; throw Error('Unexpected database call'); },
     query() { dbCalls++; throw Error('Unexpected database query'); }
   };
