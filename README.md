@@ -242,3 +242,7 @@ CI runs `test/postgres-migration.integration.test.cjs` in a disposable PostgreSQ
 ### Combined disconnect + restart fault injection
 
 `lib/disconnect-restart-simulator.cjs` models a gateway restart immediately after a simulated RPC send. It covers lost replies, disconnects before node acceptance, a crash before the updated outbox status is persisted (so the durable row remains `prepared`), and unavailable chain evidence. All restart decisions inspect or hold; the simulator makes zero additional send attempts. `test/disconnect-restart-simulator.test.cjs` covers these combinations using synthetic data only. This is not a live Core RPC or production crash-recovery test.
+
+### Integration checkpoint — November 2026
+
+The production VPS currently uses PostgreSQL for claim reservations and a separate SQLite payment journal. The staging `live-reservation-consume` module performs an atomic state transition but **does not** atomically create a payment record. It must not be wired to a real payout endpoint by itself: a crash between these operations could leave an untracked payment or stranded reservation. The next integration requires a reviewed shared transactional boundary, durable payment identity and a migration compatible with existing production data. No live payout activation is approved. Tests in `test/live-reservation-consume.test.cjs` use mocked database responses; passing them does not establish concurrent PostgreSQL behavior.
