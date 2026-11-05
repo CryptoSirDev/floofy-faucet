@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS public.faucet_payout_outbox (
   amount_sat bigint NOT NULL CHECK (amount_sat > 0),
   wallet_id text NOT NULL,
   status text NOT NULL DEFAULT 'claimed',
-  signed_raw_tx text,
+  raw_tx text,
   txid text,
   lease_owner text,
   lease_until timestamptz,
