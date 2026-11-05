@@ -65,6 +65,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       const fencedId = '99999999-9999-4999-8999-999999999999';
       const txid = 'a'.repeat(64);
       await pool.query('DELETE FROM faucet_payout_outbox WHERE request_id=$1', [fencedId]);
+      await pool.query(`INSERT INTO public.faucet_claim_reservations (request_id,ip_hash,address_hash,status) VALUES ($1,$2,$3,'reserved') ON CONFLICT (request_id) DO NOTHING`, [fencedId, 'c'.repeat(64), 'd'.repeat(64)]);
       await pool.query(`INSERT INTO faucet_payout_outbox
         (request_id,address,amount_sat,wallet_id,status,txid,raw_tx)
         VALUES ($1,$2,$3,$4,'broadcast',$5,$6)`,
