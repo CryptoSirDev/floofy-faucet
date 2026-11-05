@@ -250,3 +250,7 @@ The production VPS currently uses PostgreSQL for claim reservations and a separa
 ### Staging claim journal adapter
 
 `lib/claim-journal-atomic.cjs` now provides `journalClaim(pool, identity)`, which conditionally moves a VPS-shaped reservation from `reserved` to `processing` and inserts an immutable-identity payment intent inside **one PostgreSQL transaction**. If either operation fails, it rolls back. It **requires a separately reviewed** `public.faucet_payment_intents` table (not present in the current production schema); this commit does not create or migrate that table. The input must come from trusted server-side authorization, not directly from a client-supplied hash or amount. It is not connected to the live gateway and does not sign, broadcast, or reconcile any transaction. Its database behavior has not yet been integration-tested. Payments remain disabled.
+
+### Disposable payment-intent schema
+
+`migrations/002_payment_intents_staging.sql` defines the PostgreSQL `public.faucet_payment_intents` table expected by `lib/claim-journal-atomic.cjs`. It references the existing VPS-shaped reservation table and requires a unique request ID. Prepared/broadcast/uncertain/confirmed records must include a signed raw transaction and TXID. **Do not apply this file to production:** it has not been tested against the live schema or migration history and does not implement payment signing, broadcasting or recovery. The SQL and journal adapter still require disposable-database integration tests before any deployment decision.
