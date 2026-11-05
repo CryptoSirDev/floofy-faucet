@@ -29,7 +29,7 @@ test('staging composition serves authenticated prototype only, never payment end
   process.env.FAUCET_PAUSED = 'true';
   const server = createStagingClaimServer({
     environment: 'staging', apiKey: key,
-    pool: { connect() { throw Error('unexpected database connection'); } },
+    pool: { options: { database: 'floofy_claim_test' }, connect() { throw Error('unexpected database connection'); } },
     policy: { resolveReservation: async () => null, resolvePayment: async () => null }
   });
   try {
