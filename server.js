@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
+const { createIpDiagnosticHandler } = require('./lib/render-ip-diagnostic.cjs');
 const app = express();
 
 // Ativar trust proxy para obter o IP real do utilizador no Render
@@ -168,6 +169,13 @@ async function stagingGatewayRequest(endpoint, method, payload) {
 // This route is for a manually authenticated operator test only. The browser
 // faucet and /api/request never call it. A successful run consumes a disposable
 // staging reservation into the test outbox; the staging gateway has no broadcast.
+// Temporary authenticated diagnostic; no gateway or payment calls.
+app.post('/internal/staging/ip-diagnostic', createIpDiagnosticHandler({
+  token: GATEWAY_STAGING_TEST_TOKEN,
+  secret: GATEWAY_STAGING_CLAIM_SECRET
+}));
+
+// Operator-only staging claim test; no broadcast.
 app.post('/internal/staging/claim-test', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.set('X-Content-Type-Options', 'nosniff');
