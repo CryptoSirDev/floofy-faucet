@@ -46,7 +46,7 @@ test('claimed confirmations without block evidence are not active-chain proof', 
     throw notFound();
   };
   const result = await reconcilePayout(rpc, txid);
-  assert.equal(result.state, 'confirmed'); // legacy classification only
+  assert.equal(result.state, 'uncertain'); // confirmations alone are not active-chain proof
   const evidence = await inspectActiveChain(rpc, row);
   assert.equal(evidence.action, 'hold-for-review');
 });
