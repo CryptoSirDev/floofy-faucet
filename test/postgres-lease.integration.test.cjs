@@ -1,0 +1,92 @@
+'use strict';
+
+// Opt-in PostgreSQL integration. Uses ONLY a disposable CI database.
+// No wallet, Core RPC or real payment is contacted.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+if (process.env.RUN_PG_INTEGRATION !== '1') {
+  test('Recovery lease PostgreSQL integration is opt-in', { skip: true }, () => {});
+} else {
+  const { Pool } = require('pg');
+  const { acquireLease, renewLease, releaseLease } = require('../lib/recovery-lease.cjs');
+  const { markBroadcastUncertain } = require('../lib/fenced-recovery.cjs');
+
+  test('only one concurrent recovery worker acquires lease; stale fencing token rejected', async () => {
+    if (process.env.PG_TEST_DATABASE !== 'floofy_claim_test') {
+      throw new Error('Refusing to run outside dedicated floofy_claim_test database');
+    }
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 8 });
+    const id = '88888888-8888-4888-8888-888888888888';
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS public.faucet_claim_reservations (
+        request_id uuid PRIMARY KEY, ip_hash text NOT NULL, address_hash text NOT NULL,
+        status text NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+      )`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS faucet_payout_outbox (
+        request_id text PRIMARY KEY, address text NOT NULL, amount_sat bigint NOT NULL,
+        wallet_id text NOT NULL, status text NOT NULL, txid text, raw_tx text,
+        lease_owner text, lease_until timestamptz,
+        lease_epoch bigint NOT NULL DEFAULT 0
+      )`);
+      await pool.query(`ALTER TABLE faucet_payout_outbox
+        ADD COLUMN IF NOT EXISTS lease_owner text,
+        ADD COLUMN IF NOT EXISTS lease_until timestamptz,
+        ADD COLUMN IF NOT EXISTS lease_epoch bigint NOT NULL DEFAULT 0`);
+      await pool.query('DELETE FROM faucet_payout_outbox WHERE request_id = $1', [id]);
+      await pool.query(`INSERT INTO public.faucet_claim_reservations (request_id,ip_hash,address_hash,status) VALUES ($1,$2,$3,'reserved') ON CONFLICT (request_id) DO NOTHING`, [id, 'a'.repeat(64), 'b'.repeat(64)]);
+      await pool.query(`INSERT INTO faucet_payout_outbox
+        (request_id,address,amount_sat,wallet_id,status)
+        VALUES ($1,$2,$3,$4,'uncertain')`, [id, 'F' + 'A'.repeat(33), 1000000000, 'test-wallet']);
+      const attempts = await Promise.all(
+        Array.from({ length: 8 }, (_, i) =>
+          pool.query(acquireLease, [id, 'worker-' + i, 60]))
+      );
+      const winners = attempts.flatMap(r => r.rows);
+      assert.equal(winners.length, 1);
+      const first = winners[0];
+      assert.equal(Number(first.lease_epoch), 1);
+      assert.equal((await pool.query(renewLease, [id, 'wrong-worker', first.lease_epoch, 60])).rowCount, 0);
+      assert.equal((await pool.query(releaseLease, [id, 'wrong-worker', first.lease_epoch])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 0])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 3601])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 60])).rowCount, 1);
+      assert.equal((await pool.query(releaseLease, [id, first.lease_owner, first.lease_epoch])).rowCount, 1);
+      const second = await pool.query(acquireLease, [id, 'replacement-worker', 60]);
+      assert.equal(second.rowCount, 1);
+      assert.equal(Number(second.rows[0].lease_epoch), 2);
+      assert.equal((await pool.query(releaseLease, [id, first.lease_owner, first.lease_epoch])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, first.lease_owner, first.lease_epoch, 60])).rowCount, 0);
+      assert.equal((await pool.query(acquireLease, [id, 'invalid-worker', 0])).rowCount, 0);
+      assert.equal((await pool.query(acquireLease, [id, 'invalid-worker', 3601])).rowCount, 0);
+      await pool.query("UPDATE faucet_payout_outbox SET lease_until=NOW()-interval '1 second' WHERE request_id=$1", [id]);
+      assert.equal((await pool.query(releaseLease, [id, 'replacement-worker', 2])).rowCount, 0);
+      assert.equal((await pool.query(renewLease, [id, 'replacement-worker', 2, 60])).rowCount, 0);
+      const afterExpiry = await pool.query(acquireLease, [id, 'post-expiry-worker', 60]);
+      assert.equal(afterExpiry.rowCount, 1);
+      assert.equal(Number(afterExpiry.rows[0].lease_epoch), 3);
+      // Separate payment: prove that stale workers cannot mutate state.
+      const fencedId = '99999999-9999-4999-8999-999999999999';
+      const txid = 'a'.repeat(64);
+      await pool.query('DELETE FROM faucet_payout_outbox WHERE request_id=$1', [fencedId]);
+      await pool.query(`INSERT INTO public.faucet_claim_reservations (request_id,ip_hash,address_hash,status) VALUES ($1,$2,$3,'reserved') ON CONFLICT (request_id) DO NOTHING`, [fencedId, 'c'.repeat(64), 'd'.repeat(64)]);
+      await pool.query(`INSERT INTO faucet_payout_outbox
+        (request_id,address,amount_sat,wallet_id,status,txid,raw_tx)
+        VALUES ($1,$2,$3,$4,'broadcast',$5,$6)`,
+        [fencedId, 'F' + 'A'.repeat(33), 1000000000, 'test-wallet', txid, 'deadbeef']);
+      const leaseA = (await pool.query(acquireLease, [fencedId, 'worker-A', 60])).rows[0];
+      assert.equal((await pool.query(markBroadcastUncertain, [fencedId, 'worker-B', leaseA.lease_epoch, txid])).rowCount, 0);
+      assert.equal((await pool.query(markBroadcastUncertain, [fencedId, 'worker-A', leaseA.lease_epoch, 'b'.repeat(64)])).rowCount, 0);
+      await pool.query("UPDATE faucet_payout_outbox SET lease_until=NOW()-interval '1 second' WHERE request_id=$1", [fencedId]);
+      assert.equal((await pool.query(markBroadcastUncertain, [fencedId, 'worker-A', leaseA.lease_epoch, txid])).rowCount, 0);
+      const leaseB = (await pool.query(acquireLease, [fencedId, 'worker-B', 60])).rows[0];
+      assert.equal((await pool.query(markBroadcastUncertain, [fencedId, 'worker-A', leaseA.lease_epoch, txid])).rowCount, 0);
+      assert.equal((await pool.query(markBroadcastUncertain, [fencedId, 'worker-B', leaseB.lease_epoch, txid])).rowCount, 1);
+      assert.equal((await pool.query(markBroadcastUncertain, [fencedId, 'worker-B', leaseB.lease_epoch, txid])).rowCount, 0);
+      const final = await pool.query('SELECT status FROM faucet_payout_outbox WHERE request_id=$1', [fencedId]);
+      assert.equal(final.rows[0].status, 'uncertain');
+    } finally {
+      await pool.end();
+    }
+  });
+}

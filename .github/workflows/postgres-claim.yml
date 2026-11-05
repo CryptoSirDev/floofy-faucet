@@ -1,0 +1,86 @@
+name: PostgreSQL claim integration
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  concurrent-claim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: floofy_claim_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d floofy_claim_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RUN_PG_INTEGRATION: '1'
+      PG_TEST_DATABASE: floofy_claim_test
+      DATABASE_URL: postgresql://testuser:testpassword@127.0.0.1:5432/floofy_claim_test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install test-only PostgreSQL driver
+        run: npm install --no-save --package-lock=false --ignore-scripts pg@8
+      - name: Run each PostgreSQL integration in a fresh disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=testpassword
+          tests=(
+            test/postgres-claim.integration.test.cjs
+            test/postgres-lease.integration.test.cjs
+            test/postgres-migration.integration.test.cjs
+            test/postgres-stored-recovery.integration.test.cjs
+            test/postgres-concurrent-recovery.integration.test.cjs
+            test/postgres-crash-handover.integration.test.cjs
+            test/postgres-db-outage.integration.test.cjs
+            test/postgres-immutability.integration.test.cjs
+            test/postgres-concurrent-preparation.integration.test.cjs
+            test/postgres-bound-reservation.integration.test.cjs
+            test/postgres-bound-claim-failures.integration.test.cjs
+            test/postgres-prototype-http.integration.test.cjs
+            test/postgres-restart-decision.integration.test.cjs
+            test/postgres-ambiguous-preparation.integration.test.cjs
+            test/postgres-active-chain-inspection.integration.test.cjs
+            test/postgres-transition-fencing-audit.integration.test.cjs
+            test/postgres-expired-lease-handover.integration.test.cjs
+            test/postgres-lost-lease-ack.integration.test.cjs
+            test/postgres-slow-core-lease-expiry.integration.test.cjs
+            test/postgres-row-lock-lease-expiry.integration.test.cjs
+            test/postgres-state-transition-guard.integration.test.cjs
+            test/postgres-initial-state-guard.integration.test.cjs
+            test/postgres-failure-safety-guard.integration.test.cjs
+            test/postgres-uncertain-confirmed-observation.integration.test.cjs
+            test/postgres-concurrent-chain-observation.integration.test.cjs
+            test/postgres-confirm-observed-cas.integration.test.cjs
+            test/postgres-staging-claim-server.integration.test.cjs
+            test/postgres-staging-status-lifecycle.integration.test.cjs
+            test/postgres-live-claim-journal.integration.test.cjs
+          )
+          for test_file in "${tests[@]}"; do
+            echo "::group::${test_file} (fresh database)"
+            dropdb --if-exists -h 127.0.0.1 -U testuser floofy_claim_test
+            createdb -h 127.0.0.1 -U testuser floofy_claim_test
+            node --test --test-concurrency=1 "${test_file}"
+            echo "::endgroup::"
+          done
