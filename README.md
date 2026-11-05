@@ -258,3 +258,7 @@ The production VPS currently uses PostgreSQL for claim reservations and a separa
 ### Atomic journal validation (offline)
 
 `lib/claim-journal-atomic.cjs` now derives the reservation address HMAC from a server-held secret instead of accepting an arbitrary caller-provided address hash. `test/claim-journal-atomic.test.cjs` covers commit, rollback when the reservation cannot be consumed, rollback on duplicate intent and rejection of invalid identity/secret. These are **mocked SQL interaction tests**, not PostgreSQL concurrency tests or live gateway tests. The current VPS reservation hashes must be verified for algorithm compatibility before deployment; this staging adapter is not wired to the payment endpoint. No funds are enabled.
+
+### Claim journal hardening
+
+The staging `claim-journal-atomic.cjs` now checks UUID structure, rejects reservations with future timestamps and reports a failed rollback as an `AggregateError` requiring manual reconciliation. Offline tests cover malformed IDs and rollback failures. **No PostgreSQL integration execution or live gateway validation is claimed by these commits.** Payment activation remains blocked.
