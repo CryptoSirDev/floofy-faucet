@@ -2,7 +2,7 @@
 // Read-only balances + authenticated bound-claim staging; NO sendtoaddress.
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
@@ -56,11 +56,11 @@ async function readBody(req) {
 // Hash trust and origin binding MUST be reviewed before live deployment.
 const routes=createClaimRoutes({pool,expectedWalletId:walletId,expectedAmountSat:amountSat,
   policy:{async resolveReservation({input}){
-    if(!HASH.test(input.ip_hash)||!HASH.test(input.address_hash)||!ADDRESS.test(input.address))
+    if(!HASH.test(input.ip_hash)||!ADDRESS.test(input.address))
       throw Error('Invalid claim identity');
     const result=await rpc('validateaddress',[input.address]);
     if(!result?.isvalid)throw Error('Invalid chain address');
-    return {ip_hash:input.ip_hash,address_hash:input.address_hash,
+    return {ip_hash:input.ip_hash,address_hash:createHash('sha256').update(input.address).digest('hex'),
       address:input.address,amount_sat:amountSat,wallet_id:walletId};
   }}});
 const allowed=new Set(['/internal/balance','/internal/reserve-balance','/internal/payment',
@@ -118,4 +118,4 @@ const server=http.createServer(async(req,res)=>{
   if(path==='/internal/payment')return respond(res,503,{success:false,error:'Payments disabled',code:'PAYMENTS_PAUSED'});
   return respond(res,405,{error:'Method not allowed'});
 });
-server.listen(3001,'127.0.0.1',()=>console.log('Gateway v2 STAGING only on 127.0.0.1:3001; payments disabled'));
+server.listen(3002,'127.0.0.1',()=>console.log('Gateway v2 STAGING only on 127.0.0.1:3002; payments disabled'));
