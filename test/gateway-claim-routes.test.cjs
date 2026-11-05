@@ -50,3 +50,31 @@ test('gateway refuses wrong wallet policy and malformed request id',async()=>{
  assert.equal(result.accepted,false);
  assert.equal(result.reason,'invalid_request_id');
 });
+
+test('second consume is rejected without creating another outbox entry',async()=>{
+ let reads=0, writes=0;
+ const pool={
+   query:async()=>{
+     reads++;
+     return {rows:[{request_id:uuid,address,amount_sat:'1000000000',
+       wallet_id:'faucet',status:reads===1?'reserved':'processing',
+       expires_at:new Date(Date.now()+60000),consumed_at:reads===1?null:new Date()}]};
+   },
+   connect:async()=>({
+     query:async(sql)=>{
+       if(sql.includes('UPDATE public.faucet_claim_reservations'))return {rows:[{request_id:uuid}]};
+       if(sql.includes('INSERT INTO public.faucet_payout_outbox')){writes++;return {rows:[{request_id:uuid}]};}
+       return {rows:[]};
+     },
+     release(){}
+   })
+ };
+ const routes=createClaimRoutes({pool,expectedWalletId:'faucet',expectedAmountSat:1000000000,
+   policy:{resolveReservation:async()=>{throw Error('unused')}}});
+ const first=await routes.consume(uuid);
+ assert.equal(first.accepted,true);
+ const second=await routes.consume(uuid);
+ assert.equal(second.accepted,false);
+ assert.equal(second.reason,'not_payable');
+ assert.equal(writes,1);
+});
