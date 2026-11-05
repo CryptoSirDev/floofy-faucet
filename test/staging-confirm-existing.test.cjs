@@ -89,7 +89,7 @@ test('lost UPDATE response stays uncertain, never retries', async () => {
   };
   const result = await confirmExistingStagingPayout({ ...options, db, rpc });
   assert.equal(result.action, 'hold-for-review');
-  assert.equal(db.reads, 3);
+  assert.equal(db.reads, 4);
 });
 
 test('changes after independent inspection but before final CAS read hold safely', async () => {
