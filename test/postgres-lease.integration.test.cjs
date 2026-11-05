@@ -17,7 +17,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       throw new Error('Refusing to run outside dedicated floofy_claim_test database');
     }
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 8 });
-    const id = 'lease_integration_123456';
+    const id = '88888888-8888-4888-8888-888888888888';
     try {
       await pool.query(`CREATE TABLE IF NOT EXISTS faucet_payout_outbox (
         request_id text PRIMARY KEY, address text NOT NULL, amount_sat bigint NOT NULL,
@@ -61,7 +61,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       assert.equal(afterExpiry.rowCount, 1);
       assert.equal(Number(afterExpiry.rows[0].lease_epoch), 3);
       // Separate payment: prove that stale workers cannot mutate state.
-      const fencedId = 'fenced_integration_123456';
+      const fencedId = '99999999-9999-4999-8999-999999999999';
       const txid = 'a'.repeat(64);
       await pool.query('DELETE FROM faucet_payout_outbox WHERE request_id=$1', [fencedId]);
       await pool.query(`INSERT INTO faucet_payout_outbox
