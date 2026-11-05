@@ -24,6 +24,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       await pool.query(fs.readFileSync(path.join(__dirname, '../migrations/002_outbox_immutability.sql'), 'utf8'));
       await pool.query('DELETE FROM faucet_payout_outbox WHERE request_id=$1', [id]);
       await pool.query('DELETE FROM faucet_reservations WHERE request_id=$1', [id]);
+      await pool.query(`INSERT INTO public.faucet_claim_reservations (request_id,ip_hash,address_hash,status) VALUES ($1,$2,$3,'reserved') ON CONFLICT (request_id) DO NOTHING`, [id, 'a'.repeat(64), 'b'.repeat(64)]);
       await pool.query(`INSERT INTO faucet_reservations(request_id,address,amount_sat,wallet_id,status,expires_at)
         VALUES($1,$2,$3,$4,'claimed',NOW()+interval '1 hour')`,
         [id, 'F' + 'A'.repeat(33), 1000000000, 'test-wallet']);
