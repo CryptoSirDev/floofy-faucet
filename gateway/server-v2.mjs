@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg');
 const { createClaimRoutes } = require('./claim-routes-v2.cjs');
+const { inspectPersistedPayout } = require('../lib/payout-inspection.cjs');
 const { gatewayBoundIdentity } = require('../lib/claim-wire-contract.cjs');
 // Refuse to open any database or wallet until the isolated staging target is checked.
 const databaseEnv = readFileSync('/opt/floofy-rpc-gateway/staging/database.env', 'utf8');
@@ -61,7 +62,7 @@ const routes=createClaimRoutes({pool,expectedWalletId:walletId,expectedAmountSat
     return trusted;
   }}});
 const allowed=new Set(['/internal/balance','/internal/reserve-balance','/internal/payment',
-  '/internal/payment-status','/internal/claim-reserve','/internal/claim-consume','/internal/claim-status']);
+  '/internal/payment-status','/internal/payout-inspect','/internal/claim-reserve','/internal/claim-consume','/internal/claim-status']);
 const server=http.createServer(async(req,res)=>{
   const path=req.url?.split('?')[0];
   if(req.method==='GET'&&req.url==='/health')
@@ -76,6 +77,21 @@ const server=http.createServer(async(req,res)=>{
   }
   if(req.method==='GET'&&path==='/internal/payment-status')
     return respond(res,503,{error:'Legacy payment journal unavailable in isolated staging'});
+  // Authenticated, read-only inspection of a durable payout in disposable
+  // staging. Mock Core cannot broadcast; unknown transaction => uncertain.
+  // Never expose signed raw bytes, wallet keys or database credentials.
+  if(req.method==='GET'&&path==='/internal/payout-inspect'){
+    const u=new URL(req.url,'http://localhost');
+    const id=u.searchParams.get('request_id');
+    if(u.searchParams.size!==1||!UUID.test(id||''))
+      return respond(res,400,{error:'Invalid request_id'});
+    try{
+      const result=await inspectPersistedPayout({db:pool,requestId:id,rpc});
+      return respond(res,200,result);
+    }catch{
+      return respond(res,503,{error:'Payout inspection unavailable; no retry authorized'});
+    }
+  }
   if(req.method==='GET'&&path==='/internal/claim-status'){
     const u=new URL(req.url,'http://localhost');
     const id=u.searchParams.get('request_id');
