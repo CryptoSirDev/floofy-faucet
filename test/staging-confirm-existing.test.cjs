@@ -114,8 +114,8 @@ test('lease owner changes at UPDATE time are rejected by SQL CAS', async () => {
   const db = makeDb();
   const query = db.query.bind(db);
   db.query = async (sql, params) => {
-    if (/UPDATE public\\.faucet_payout_outbox/.test(sql)) {
-      assert.match(sql, /lease_owner IS NOT DISTINCT FROM \\$6::text/);
+    if (/UPDATE public\.faucet_payout_outbox/.test(sql)) {
+      assert.match(sql, /lease_owner IS NOT DISTINCT FROM \$6::text/);
       // Simulate the DB rejecting a changed owner between final SELECT and UPDATE.
       return { rows: [] };
     }
