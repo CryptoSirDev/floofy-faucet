@@ -61,14 +61,14 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       assert.equal(duplicate.body.request_id, first.body.request_id);
       const forged = { request_id: first.body.request_id, address: 'F' + 'B'.repeat(33), amount_sat: 1, wallet_id: 'reserve-wallet' };
       const claims = await Promise.all(Array.from({ length: 8 }, () => post('/prototype/claim-consume', forged)));
-      assert.equal(claims.filter(x => x.code === 200 && x.body.status === 'claimed').length, 1);
+      assert.equal(claims.filter(x => x.code === 200 && x.body.status === 'processing').length, 1);
       assert.equal(claims.filter(x => x.code === 400).length, 7);
       const reservations = (await pool.query('SELECT request_id,status,address,amount_sat,wallet_id,consumed_at FROM public.faucet_claim_reservations')).rows;
       const outbox = (await pool.query('SELECT request_id,status,address,amount_sat,wallet_id FROM public.faucet_payout_outbox')).rows;
       assert.equal(reservations.length, 1);
       assert.equal(outbox.length, 1);
       assert.equal(reservations[0].request_id, first.body.request_id);
-      assert.equal(reservations[0].status, 'claimed');
+      assert.equal(reservations[0].status, 'processing');
       assert.ok(reservations[0].consumed_at);
       assert.equal(outbox[0].request_id, first.body.request_id);
       assert.equal(outbox[0].status, 'claimed');
