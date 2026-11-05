@@ -23,6 +23,18 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       assert.equal(await markConfirmedObserved(pool, { ...args, expectedLeaseOwner: null }), null);
       assert.equal(await markConfirmedObserved(pool, { ...args, expectedRawTx: 'cafebabe' }), null);
       assert.equal(await markConfirmedObserved(pool, { ...args, txid: 'c'.repeat(64), evidence: { ...args.evidence, txid: 'c'.repeat(64) } }), null);
+      // A separate database writer changes ownership after the observer's
+      // snapshot. The stale CAS must not confirm, even with valid evidence.
+      await pool.query(
+        'UPDATE public.faucet_payout_outbox SET lease_owner=$2 WHERE request_id=$1',
+        [id, 'worker-b']);
+      assert.equal(await markConfirmedObserved(pool, args), null);
+      assert.equal((await pool.query(
+        'SELECT status FROM public.faucet_payout_outbox WHERE request_id=$1', [id])).rows[0].status, 'uncertain');
+      // Restoring ownership represents a fresh, explicitly authorized attempt.
+      await pool.query(
+        'UPDATE public.faucet_payout_outbox SET lease_owner=$2 WHERE request_id=$1',
+        [id, 'worker-a']);
       const results = await Promise.all(Array.from({ length: 10 }, () => markConfirmedObserved(pool, args)));
       assert.equal(results.filter(Boolean).length, 1);
       assert.equal((await pool.query('SELECT status FROM public.faucet_payout_outbox WHERE request_id=$1', [id])).rows[0].status, 'confirmed');
