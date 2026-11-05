@@ -79,6 +79,47 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       const outbox = await client.query(`SELECT count(*)::int AS n
         FROM public.faucet_payout_outbox`);
       assert.equal(outbox.rows[0].n, 0);
+      // A legacy 24h reservation must still block a matching new claim.
+      const { reserveBound } = require('../lib/reserve-bound.cjs');
+      const { claimBoundReservation } = require('../lib/claim-bound-reservation.cjs');
+      const pool = { connect: async () => ({
+        query: (...args) => client.query(...args), release() {}
+      }) };
+      const payment = {
+        ip_hash: '1'.repeat(64), address_hash: '9'.repeat(64),
+        address: 'F' + 'A'.repeat(33), amount_sat: 1000000000,
+        wallet_id: 'staging-faucet'
+      };
+      const blocked = await reserveBound(pool, payment);
+      assert.equal(blocked.allowed, false);
+      assert.equal(blocked.request_id, ids[0]);
+
+      const fresh = await reserveBound(pool, {
+        ...payment, ip_hash: 'e'.repeat(64), address_hash: 'f'.repeat(64)
+      });
+      assert.equal(fresh.allowed, true);
+      const identity = {
+        request_id: fresh.request_id, address: payment.address,
+        amount_sat: payment.amount_sat, wallet_id: payment.wallet_id
+      };
+      await assert.rejects(claimBoundReservation(pool, {
+        ...identity, wallet_id: 'forged-wallet'
+      }), /Reservation unavailable/);
+      const consumed = await claimBoundReservation(pool, identity);
+      assert.equal(consumed.status, 'processing');
+      await assert.rejects(claimBoundReservation(pool, identity), /Reservation unavailable/);
+      const saved = (await client.query(`SELECT r.status AS reservation_status,
+        o.status AS payout_status, o.address, o.amount_sat, o.wallet_id
+        FROM public.faucet_claim_reservations r
+        JOIN public.faucet_payout_outbox o USING(request_id)
+        WHERE r.request_id=$1`, [fresh.request_id])).rows;
+      assert.equal(saved.length, 1);
+      assert.equal(saved[0].reservation_status, 'processing');
+      assert.equal(saved[0].payout_status, 'claimed');
+      assert.equal(saved[0].address, identity.address);
+      assert.equal(Number(saved[0].amount_sat), identity.amount_sat);
+      assert.equal(saved[0].wallet_id, identity.wallet_id);
+
     } finally {
       await client.query('DROP TABLE IF EXISTS public.faucet_payout_outbox');
       await client.query('DROP TABLE IF EXISTS public.faucet_claim_reservations');
