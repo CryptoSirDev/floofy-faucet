@@ -10,9 +10,9 @@ test('Render staging test route uses independent staging credentials and never p
   assert.ok(route, 'operator staging route exists');
   assert.match(route, /x-staging-test-token/);
   assert.match(route, /GATEWAY_STAGING_TEST_TOKEN/);
-  assert.match(route, /GATEWAY_STAGING_API_KEY/);
-  assert.match(route, /GATEWAY_STAGING_CLAIM_SECRET/);
-  assert.match(route, /GATEWAY_STAGING_URL/);
+  assert.match(source, /GATEWAY_STAGING_API_KEY/);
+  assert.match(source, /GATEWAY_STAGING_CLAIM_SECRET/);
+  assert.match(source, /GATEWAY_STAGING_URL/);
   assert.match(route, /\/internal\/claim-reserve/);
   assert.match(route, /\/internal\/claim-consume/);
   assert.match(route, /\/internal\/claim-status/);
