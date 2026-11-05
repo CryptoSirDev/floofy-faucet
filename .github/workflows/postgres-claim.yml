@@ -35,8 +35,8 @@ jobs:
       PG_TEST_DATABASE: floofy_claim_test
       DATABASE_URL: postgresql://testuser:testpassword@127.0.0.1:5432/floofy_claim_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
       - name: Install test-only PostgreSQL driver
