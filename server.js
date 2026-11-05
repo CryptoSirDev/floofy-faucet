@@ -1,7 +1,7 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const { createHmac } = require('node:crypto');
+const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
 const app = express();
 
@@ -128,6 +128,110 @@ async function reserveBoundClaimFromRender(req, address) {
   const payload = buildBoundClaimPayload(req.ip, address);
   return gatewayPost('/internal/claim-reserve', payload);
 }
+
+// Operator-only, staging-only end-to-end exercise. This never touches the public
+// claim route, production gateway, live Core, signing or broadcast.
+const GATEWAY_STAGING_URL = (process.env.GATEWAY_STAGING_URL || '').replace(/\/$/, '');
+const GATEWAY_STAGING_API_KEY = process.env.GATEWAY_STAGING_API_KEY || '';
+const GATEWAY_STAGING_CLAIM_SECRET = process.env.GATEWAY_STAGING_CLAIM_SECRET || '';
+const GATEWAY_STAGING_TEST_TOKEN = process.env.GATEWAY_STAGING_TEST_TOKEN || '';
+
+function safeSecretMatch(provided, expected) {
+  if (typeof provided !== 'string' || !expected) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+async function stagingGatewayRequest(endpoint, method, payload) {
+  if (!GATEWAY_STAGING_URL.startsWith('https://') ||
+      !GATEWAY_STAGING_API_KEY || GATEWAY_STAGING_API_KEY.length < 32 ||
+      !GATEWAY_STAGING_CLAIM_SECRET || GATEWAY_STAGING_CLAIM_SECRET.length < 32 ||
+      !GATEWAY_STAGING_TEST_TOKEN || GATEWAY_STAGING_TEST_TOKEN.length < 32) {
+    throw new Error('Staging integration is not configured');
+  }
+  const response = await fetch(GATEWAY_STAGING_URL + endpoint, {
+    method,
+    headers: {
+      'X-API-Key': GATEWAY_STAGING_API_KEY,
+      ...(payload ? { 'Content-Type': 'application/json' } : {})
+    },
+    ...(payload ? { body: JSON.stringify(payload) } : {}),
+    signal: AbortSignal.timeout(10000)
+  });
+  let data;
+  try { data = await response.json(); }
+  catch { throw new Error('Invalid staging gateway response'); }
+  return { status: response.status, data };
+}
+
+// This route is for a manually authenticated operator test only. The browser
+// faucet and /api/request never call it. A successful run consumes a disposable
+// staging reservation into the test outbox; the staging gateway has no broadcast.
+app.post('/internal/staging/claim-test', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (!safeSecretMatch(req.get('x-staging-test-token'), GATEWAY_STAGING_TEST_TOKEN)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const address = req.body?.address;
+  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
+    return res.status(400).json({ error: 'Invalid FLOOF address' });
+  }
+  try {
+    const payload = renderClaimPayload({
+      ip: req.ip,
+      address,
+      secret: GATEWAY_STAGING_CLAIM_SECRET
+    });
+    const reservation = await stagingGatewayRequest('/internal/claim-reserve', 'POST', payload);
+    if (reservation.status !== 201) {
+      return res.status(reservation.status === 429 ? 429 : 502).json({
+        stage: 'reserve',
+        gateway_status: reservation.status,
+        result: reservation.data
+      });
+    }
+    const requestId = reservation.data?.request_id;
+    if (typeof requestId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+      return res.status(502).json({ stage: 'reserve', error: 'Invalid reservation response; reconcile staging' });
+    }
+
+    const consumed = await stagingGatewayRequest('/internal/claim-consume', 'POST', { request_id: requestId });
+    if (consumed.status !== 202) {
+      return res.status(502).json({
+        stage: 'consume',
+        request_id: requestId,
+        gateway_status: consumed.status,
+        result: consumed.data,
+        instruction: 'Inspect claim status before any manual retry'
+      });
+    }
+
+    const status = await stagingGatewayRequest(
+      '/internal/claim-status?request_id=' + encodeURIComponent(requestId), 'GET'
+    );
+    if (status.status !== 200) {
+      return res.status(502).json({
+        stage: 'status',
+        request_id: requestId,
+        gateway_status: status.status,
+        instruction: 'Reservation was consumed; inspect staging PostgreSQL before retry'
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      mode: 'staging-no-broadcast',
+      request_id: requestId,
+      reservation_status: status.data.reservation_status,
+      payout_status: status.data.payout_status
+    });
+  } catch (error) {
+    console.error('Staging claim test failed:', error.message);
+    return res.status(503).json({ error: 'Staging test unavailable; inspect request state before retry' });
+  }
+});
 
 app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
