@@ -3,22 +3,22 @@
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { timingSafeEqual } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
+const { Pool } = require('pg');
 const { createClaimRoutes } = require('./claim-routes-v2.cjs');
 const { gatewayBoundIdentity } = require('../lib/claim-wire-contract.cjs');
 // Refuse to open any database or wallet until the isolated staging target is checked.
-const databaseEnv = readFileSync('/opt/floofy-rpc-gateway/database.env', 'utf8');
+const databaseEnv = readFileSync('/opt/floofy-rpc-gateway/staging/database.env', 'utf8');
 const databaseLine = databaseEnv.split(/\r?\n/).find(x => x.startsWith('DATABASE_URL='));
 if (!databaseLine) throw Error('Missing staging database configuration');
 let databaseName;
 try { databaseName = decodeURIComponent(new URL(databaseLine.slice('DATABASE_URL='.length)).pathname.slice(1)); }
 catch { throw Error('Invalid staging database URL'); }
 if (databaseName !== 'floofy_claim_test') throw Error('Refusing non-disposable PostgreSQL database');
-const { pool } = require('./claim-store-v2.cjs');
+const pool = new Pool({connectionString:databaseLine.slice('DATABASE_URL='.length),max:3,connectionTimeoutMillis:5000});
 
-const env = Object.fromEntries(readFileSync('/opt/floofy-rpc-gateway/gateway.env', 'utf8')
+const env = Object.fromEntries(readFileSync('/opt/floofy-rpc-gateway/staging/gateway.env', 'utf8')
   .split(/\r?\n/).filter(s => s.includes('=') && !s.startsWith('#'))
   .map(s => { const i=s.indexOf('='); return [s.slice(0,i),s.slice(i+1)]; }));
 if (env.PAYMENTS_ENABLED !== 'false' || env.GATEWAY_V2_STAGING !== 'true')
@@ -28,8 +28,6 @@ for (const name of ['GATEWAY_API_KEY','RPC_USER','RPC_PASS','RPC_URL'])
 if (env.RPC_URL !== 'http://127.0.0.1:16664')
   throw Error('Staging requires dedicated mock Core on port 16664; live Core is forbidden');
 const apiKey=Buffer.from(env.GATEWAY_API_KEY);
-const db=new DatabaseSync('/var/lib/floofy-rpc-gateway/staging-payments.sqlite', { readOnly:true });
-const lookup=db.prepare('SELECT request_id,address,amount_sat,status,txid,created_at FROM payout_v2 WHERE request_id=?');
 const respond=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
 const authorized=req=>{const v=req.headers['x-api-key'];const b=Buffer.from(typeof v==='string'?v:'');return b.length===apiKey.length&&timingSafeEqual(b,apiKey);};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,14 +74,8 @@ const server=http.createServer(async(req,res)=>{
     try{return respond(res,200,{balance:await rpc('getbalance')});}
     catch{return respond(res,503,{error:'Balance unavailable'});}
   }
-  if(req.method==='GET'&&path==='/internal/payment-status'){
-    const u=new URL(req.url,'http://localhost');
-    const id=u.searchParams.get('request_id');
-    if(u.searchParams.size!==1||!id||!/^[-a-zA-Z0-9_]{12,100}$/.test(id))
-      return respond(res,400,{error:'Invalid request_id'});
-    const p=lookup.get(id);
-    return respond(res,p?200:404,p||{error:'Not found'});
-  }
+  if(req.method==='GET'&&path==='/internal/payment-status')
+    return respond(res,503,{error:'Legacy payment journal unavailable in isolated staging'});
   if(req.method==='GET'&&path==='/internal/claim-status'){
     const u=new URL(req.url,'http://localhost');
     const id=u.searchParams.get('request_id');
