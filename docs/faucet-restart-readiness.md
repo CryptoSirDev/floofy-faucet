@@ -11,6 +11,13 @@ The current experimental code has no reviewed production-safe prepare/persist/br
 - A real restart must reconcile existing SQLite processing/uncertain/sent records first. Never replay or discard ambiguous payments.
 - Render faucet is intentionally paused; the faucet Core was previously reported empty. Funding is a separate operator decision, not a software test.
 
+## Verified production-code blocker (GitHub main inspection)
+- Render's `FAUCET_PAUSED=true` was deliberately set by the operator, but the deployed-code candidate `main/server.js` also hardcodes `const FAUCET_PAUSED = true;`.
+- The `POST /api/request` handler **unconditionally** returns HTTP 503 maintenance; it does not consult the environment variable and does not invoke the gateway.
+- Consequently **changing only the Render variable cannot restore payouts**. Do not advise toggling it as a restart procedure.
+- The inspected GitHub `main` source may not equal the deployed Render revision; verify the actual deployed commit before making operational claims.
+- A new payout route must be reviewed and bound to a safe, durable reservation/payment flow before unpausing; no production code change is authorized here.
+
 ## Shortest safe path to a restart
 1. **Read-only live inventory**: operator verifies actual service health, deployed commit, pause flags (report values only; do not paste secrets), gateway/Core balances, and counts of SQLite payment states. No restarts or writes.
 2. **Legacy reconciliation**: classify every processing/uncertain attempt and check its actual on-chain status. Hold unresolved entries; do not pay twice.
