@@ -174,6 +174,18 @@ FloofyChain Core or sends real FLOOF.
 Passing CI demonstrates the tested properties in isolation; it does
 not prove that live gateway/database/RPC integration is safe.
 
+### Current VPS reservation compatibility (not deployed)
+
+The `feature/recoverable-claims` branch now includes **isolated building blocks** for the existing VPS PostgreSQL `faucet_claim_reservations` table:
+
+- `lib/live-reservation-identity.cjs`: read-only reservation lookup, address-hash match, `reserved` status and 24-hour age check.
+- `lib/live-reservation-consume.cjs`: conditional PostgreSQL `UPDATE ... RETURNING` from `reserved` to `processing`, checking request ID, address hash and age in the same SQL statement.
+- `test/live-reservation-identity.test.cjs` and `test/live-reservation-consume.test.cjs`: offline unit tests included in the existing `npm test` command; no additional workflow is needed.
+
+**Critical integration limits:** These modules are not installed on the VPS and are not invoked by the live gateway. A successful transition to `processing` is **not** permission to call `sendtoaddress`: a crash after the transition could strand a reservation, and the existing SQLite payment journal is not in the same transaction as PostgreSQL. A durable, uniquely keyed payment outbox, bound amount/wallet/address and safe RPC recovery are required before activation. The gateway currently stores only the reservation hashes, so the same server-side secret and domain-separated HMAC algorithm must be configured consistently at both ends; changing the hashing scheme without a migration would break cooldown matching. Never expose this secret to the browser.
+
+The Render-side `server.js` also contains a guarded reservation/payment route, but its explicit `PAYOUT_INTEGRATION_APPROVED = false` interlock prevents live requests even when `FAUCET_PAUSED=false`. This is intentional until gateway authorization, persistent payment identity, trusted proxy handling and end-to-end tests are completed. No production deployment or payout activation is authorized by these commits.
+
 ### Remaining work before any production activation
 
 1. Review and version-control the actual trusted VPS gateway implementation.
