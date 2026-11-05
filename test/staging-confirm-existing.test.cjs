@@ -40,7 +40,7 @@ test('staging bridge verifies RPC internally and performs a single fenced UPDATE
   const db = makeDb();
   const result = await confirmExistingStagingPayout({ ...options, db, rpc });
   assert.equal(result.action, 'confirmed-existing');
-  assert.equal(db.reads, 3);
+  assert.equal(db.reads, 4);
   assert.equal(db.writes, 1);
 });
 
@@ -71,7 +71,7 @@ test('reorg, missing evidence and changed payout do not write', async () => {
   const badRpc = async method => method === 'getblockhash' ? 'c'.repeat(64) : rpc(method);
   for (const [client, reader] of [
     [badRpc, makeDb()],
-    [rpc, makeDb((reads, original) => { if (reads === 2) original.status = 'prepared'; })]
+    [rpc, makeDb((reads, original) => { if (reads === 3) original.status = 'prepared'; })]
   ]) {
     const db = reader;
     const result = await confirmExistingStagingPayout({ ...options, db, rpc: client });
@@ -90,4 +90,21 @@ test('lost UPDATE response stays uncertain, never retries', async () => {
   const result = await confirmExistingStagingPayout({ ...options, db, rpc });
   assert.equal(result.action, 'hold-for-review');
   assert.equal(db.reads, 3);
+});
+
+test('changes after independent inspection but before final CAS read hold safely', async () => {
+  for (const patch of [
+    { raw_tx: 'beadfeed' },
+    { txid: 'c'.repeat(64) },
+    { lease_owner: 'other-worker' },
+    { lease_epoch: 5 },
+    { status: 'broadcast' }
+  ]) {
+    const db = makeDb((reads, current) => {
+      if (reads === 4) Object.assign(current, patch);
+    });
+    const result = await confirmExistingStagingPayout({ ...options, db, rpc });
+    assert.equal(result.action, 'hold-for-review', JSON.stringify(patch));
+    assert.equal(db.writes, 0);
+  }
 });
