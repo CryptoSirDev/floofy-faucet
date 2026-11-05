@@ -24,13 +24,12 @@ function fixture({ override = {} } = {}) {
   };
   const responses = {
     getblockhash: genesis,
-    validateaddress: { isvalid: true },
+    validateaddress: { isvalid: true, ismine: true },
     createrawtransaction: 'aabb',
     fundrawtransaction: { hex: 'ccdd', changepos: 1, fee: 0.0001 },
-    signrawtransactionwithwallet: { hex: 'eeff', complete: true },
+    signrawtransaction: { hex: 'eeff', complete: true },
     decoderawtransaction: decoded,
     getrawtransaction: { vout: [{ n: 0, value: 2, scriptPubKey: { addresses: [change] } }] },
-    getaddressinfo: { ismine: true },
     ...override
   };
   const rpc = async (method, params) => {
@@ -75,7 +74,7 @@ test('wrong genesis prevents wallet RPC operations', async () => {
 
 test('rejects foreign change address', async () => {
   const { rpc } = fixture({
-    override: { getaddressinfo: ([a]) => ({ ismine: a !== change }) }
+    override: { validateaddress: ([a]) => ({ isvalid: true, ismine: a !== change }) }
   });
   const signer = createCoreWalletSigner({
     rpc, walletId, maxFeeSat: feeSat, expectedGenesisHash: genesis, enabled: true
