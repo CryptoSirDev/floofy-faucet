@@ -35,7 +35,10 @@ const GATEWAY_API_KEY = process.env.GATEWAY_API_KEY || '';
 const CLAIM_HASH_SECRET = process.env.CLAIM_HASH_SECRET || '';
 const CLAIMS_INTEGRATION_ENABLED = process.env.CLAIMS_INTEGRATION_ENABLED === 'true';
 // Safety interlock: payments remain disabled until HTTPS, wallet and reconciliation tests pass.
-const FAUCET_PAUSED = true;
+// Two independent interlocks: Render pause and explicit reviewed gateway approval.
+// Keep approval false until the VPS verifies reservation ownership and recovery.
+const PAYOUT_INTEGRATION_APPROVED = false;
+const FAUCET_PAUSED = process.env.FAUCET_PAUSED !== 'false' || !PAYOUT_INTEGRATION_APPROVED;
 const MAINTENANCE_MESSAGE =
   'Faucet payouts are temporarily paused while the secure gateway migration is completed. Thank you for your patience! 🐹💙';
 
@@ -111,13 +114,52 @@ async function gatewayPost(endpoint, payload) {
 }
 app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  // Explicit fail-closed interlock: no reservation is made while payouts are paused.
+  // No reservation or cooldown consumption while either safety interlock is closed.
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED) {
     return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
   }
-  // This branch intentionally never calls /internal/payment until the gateway
-  // checks reservation ownership and a durable transaction reconciliation exists.
-  return res.status(503).json({ success: false, paused: true, message: 'Payment reconciliation pending verification' });
+  const address = typeof req.body?.address === 'string' ? req.body.address.trim() : '';
+  if (!/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
+    return res.status(400).json({ success: false, message: 'Invalid FLOOF address' });
+  }
+  if (!req.ip || typeof req.ip !== 'string') {
+    return res.status(503).json({ success: false, message: 'Client identity unavailable' });
+  }
+  try {
+    // Both hashes use the same server-held secret. Never expose IPs or the secret.
+    const reserved = await gatewayPost('/internal/claim-reserve', {
+      ip_hash: claimHash('ip:' + req.ip),
+      address_hash: claimHash('address:' + address)
+    });
+    if (reserved.status === 429) {
+      return res.status(429).json({ success: false, message: 'One claim per IP or wallet every 24 hours' });
+    }
+    if (reserved.status !== 201 || !/^[-a-zA-Z0-9_]{12,100}$/.test(reserved.data?.request_id || '')) {
+      throw new Error('Reservation failed');
+    }
+    const requestId = reserved.data.request_id;
+    // Payment may only be enabled after the gateway verifies this request_id
+    // against the reserved address, amount, wallet and immutable journal.
+    // A timeout is ambiguous: never create a replacement reservation or retry.
+    const payment = await gatewayPost('/internal/payment', {
+      request_id: requestId, address, amount: 10
+    });
+    if (payment.status === 200 && payment.data?.status === 'sent' &&
+        typeof payment.data.txid === 'string') {
+      return res.json({ success: true, txid: payment.data.txid });
+    }
+    return res.status(503).json({
+      success: false,
+      message: 'Claim reserved; payment pending verification. Do not retry.',
+      request_id: requestId
+    });
+  } catch (error) {
+    console.error('Faucet claim failed:', error.message);
+    return res.status(503).json({
+      success: false,
+      message: 'Claim status uncertain. Please contact support before retrying.'
+    });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
