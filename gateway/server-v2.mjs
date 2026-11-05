@@ -7,6 +7,14 @@ import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { createClaimRoutes } = require('./claim-routes-v2.cjs');
+// Refuse to open any database or wallet until the isolated staging target is checked.
+const databaseEnv = readFileSync('/opt/floofy-rpc-gateway/database.env', 'utf8');
+const databaseLine = databaseEnv.split(/\\r?\\n/).find(x => x.startsWith('DATABASE_URL='));
+if (!databaseLine) throw Error('Missing staging database configuration');
+let databaseName;
+try { databaseName = decodeURIComponent(new URL(databaseLine.slice('DATABASE_URL='.length)).pathname.slice(1)); }
+catch { throw Error('Invalid staging database URL'); }
+if (databaseName !== 'floofy_claim_test') throw Error('Refusing non-disposable PostgreSQL database');
 const { pool } = require('./claim-store-v2.cjs');
 
 const env = Object.fromEntries(readFileSync('/opt/floofy-rpc-gateway/gateway.env', 'utf8')
