@@ -59,3 +59,16 @@ test('staging server can be composed with all safety gates but does not listen a
     const server = createStagingClaimServer({ pool, policy, apiKey: key, environment: 'staging' });
     assert.equal(server.listening, false);
   }));
+
+test('staging server refuses missing or ambiguous pause flags', () => {
+  for (const flags of [
+    {},
+    { PAYMENTS_ENABLED: 'false' },
+    { FAUCET_PAUSED: 'true' },
+    { PAYMENTS_ENABLED: 'FALSE', FAUCET_PAUSED: 'true' },
+    { PAYMENTS_ENABLED: 'false', FAUCET_PAUSED: 'TRUE' }
+  ]) {
+    withEnvironment({ PG_TEST_DATABASE: 'floofy_claim_test', ...flags }, () =>
+      assert.throws(() => createStagingClaimServer({ pool, policy, apiKey: key, environment: 'staging' }), /refuses/));
+  }
+});
