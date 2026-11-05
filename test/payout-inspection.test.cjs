@@ -45,7 +45,7 @@ test('claimed payout with no signed transaction cannot be inspected', async () =
   await assert.rejects(inspectPersistedPayout({
     db: db({ ...base, status: 'claimed', txid: null, raw_tx: null }),
     requestId: id, rpc: async () => {}
-  }), /No durable transaction/);
+  }), /Payment not in a recoverable state/);
 });
 
 test('unavailable Core yields uncertain hold, never retry', async () => {
