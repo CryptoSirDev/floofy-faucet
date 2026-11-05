@@ -25,9 +25,10 @@ const makeDb = (mutate = () => {}) => {
       }
       if (/UPDATE public\.faucet_payout_outbox/.test(sql)) {
         writes++;
-        const [, status, expectedTx, raw, epoch] = params;
+        const [, status, expectedTx, raw, epoch, owner] = params;
         if (current.status !== status || current.txid !== expectedTx ||
-            current.raw_tx !== raw || current.lease_epoch !== epoch) return { rows: [] };
+            current.raw_tx !== raw || current.lease_epoch !== epoch ||
+            current.lease_owner !== owner) return { rows: [] };
         return { rows: [{ request_id: id, status: 'confirmed', txid }] };
       }
       throw Error('Unexpected query');
@@ -107,4 +108,19 @@ test('changes after independent inspection but before final CAS read hold safely
     assert.equal(result.action, 'hold-for-review', JSON.stringify(patch));
     assert.equal(db.writes, 0);
   }
+});
+
+test('lease owner changes at UPDATE time are rejected by SQL CAS', async () => {
+  const db = makeDb();
+  const query = db.query.bind(db);
+  db.query = async (sql, params) => {
+    if (/UPDATE public\\.faucet_payout_outbox/.test(sql)) {
+      assert.match(sql, /lease_owner IS NOT DISTINCT FROM \\$6::text/);
+      // Simulate the DB rejecting a changed owner between final SELECT and UPDATE.
+      return { rows: [] };
+    }
+    return query(sql, params);
+  };
+  const result = await confirmExistingStagingPayout({ ...options, db, rpc });
+  assert.equal(result.action, 'hold-for-review');
 });
