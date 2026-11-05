@@ -29,6 +29,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         ADD COLUMN IF NOT EXISTS lease_until timestamptz,
         ADD COLUMN IF NOT EXISTS lease_epoch bigint NOT NULL DEFAULT 0`);
       await pool.query('DELETE FROM faucet_payout_outbox WHERE request_id=$1', [id]);
+      await pool.query(`INSERT INTO public.faucet_claim_reservations (request_id,ip_hash,address_hash,status) VALUES ($1,$2,$3,'reserved') ON CONFLICT (request_id) DO NOTHING`, [id, 'a'.repeat(64), 'b'.repeat(64)]);
       await pool.query(`INSERT INTO faucet_payout_outbox
         (request_id,address,amount_sat,wallet_id,status,txid,raw_tx)
         VALUES ($1,$2,$3,$4,'broadcast',$5,$6)`,
