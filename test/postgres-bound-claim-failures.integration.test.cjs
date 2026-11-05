@@ -63,7 +63,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       await pool.query('DROP TRIGGER reject_outbox ON public.faucet_payout_outbox');
       await pool.query('DROP FUNCTION public.reject_test_outbox()');
       const success = await claimBoundReservation(pool, bound);
-      assert.equal(success.status, 'claimed');
+      assert.equal(success.status, 'processing');
       await assert.rejects(claimBoundReservation(pool, bound), /Reservation unavailable/);
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM public.faucet_payout_outbox')).rows[0].n, 1);
     } finally {
