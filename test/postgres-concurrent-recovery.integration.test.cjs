@@ -18,7 +18,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
     const schema = 'floofy_concurrent_recovery_test';
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10, options: '-c search_path=' + schema });
     const sql = fs.readFileSync(path.join(__dirname, '../migrations/001_recoverable_payouts.sql'), 'utf8');
-    const id = 'recovery_concurrent_12345';
+    const id = '33333333-3333-4333-8333-333333333333';
     const txid = 'a'.repeat(64);
     try {
       await pool.query('CREATE SCHEMA IF NOT EXISTS ' + schema);
