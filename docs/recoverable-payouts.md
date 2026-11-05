@@ -2,6 +2,17 @@
 
 Status: **NOT ENABLED**. This branch intentionally leaves `/api/request` paused.
 
+## Verified VPS storage boundary (2026-11-05)
+
+The currently deployed gateway still uses two separate persistence systems:
+
+- PostgreSQL production table `public.faucet_claim_reservations`: `request_id uuid PRIMARY KEY`, `ip_hash`, `address_hash`, `created_at`, and `status`. Its status check currently permits `reserved`, `processing`, `sent`, `uncertain`, and `failed`. It does **not** currently bind a reservation to the exact destination address, satoshi amount, or payout wallet.
+- SQLite `/var/lib/floofy-rpc-gateway/payments.sqlite`: `payout_v2` has `request_id` as primary key plus `address`, `amount_sat`, `status`, `txid`, `error`, `created_at`, and `updated_at`.
+
+The prototype migration `migrations/001_recoverable_payouts.sql` creates a different PostgreSQL table, `faucet_reservations`, and a PostgreSQL `faucet_payout_outbox`. It is **not** a migration of the live `faucet_claim_reservations` table and it does not make the existing SQLite `payout_v2` journal atomic with PostgreSQL. Do not run it against production or assume the existing gateway uses these prototype tables.
+
+The branch's `claim-once.cjs` adapter is currently a reference implementation for the prototype schema only. The actual gateway integration must first choose and review one authoritative transaction boundary, add exact destination/amount/wallet binding to the trusted reservation record, and replace or reconcile the separate SQLite payout journal. Until that is designed and tested, keep both payment interlocks disabled.
+
 ## Existing gateway audit (uploaded 2026-11-04)
 
 - `/internal/claim-reserve` creates a PostgreSQL reservation with `request_id`.
