@@ -57,6 +57,7 @@ jobs:
             test/postgres-immutability.integration.test.cjs
             test/postgres-concurrent-preparation.integration.test.cjs
             test/postgres-bound-reservation.integration.test.cjs
+            test/postgres-bound-claim-failures.integration.test.cjs
             test/postgres-prototype-http.integration.test.cjs
             test/postgres-restart-decision.integration.test.cjs
             test/postgres-ambiguous-preparation.integration.test.cjs
