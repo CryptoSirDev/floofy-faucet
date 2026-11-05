@@ -48,6 +48,22 @@ async function gatewayGet(endpoint) {
   return response.json();
 }
 
+// Public read-only reserve balance. Gateway must expose an independently
+// restricted /internal/reserve-balance route bound to the MAIN Core's getbalance.
+// Never use the main Core for payments or silently fall back to the hot wallet.
+app.get('/api/reserve-balance', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const data = await gatewayGet('/internal/reserve-balance');
+    if (typeof data.balance !== 'number' || !Number.isFinite(data.balance) || data.balance < 0) {
+      throw new Error('Invalid reserve balance');
+    }
+    return res.json({ success: true, balance: data.balance, balance_type: 'main_reserve' });
+  } catch {
+    return res.status(503).json({ success: false, error: 'Reserve balance unavailable', balance_type: 'main_reserve' });
+  }
+});
+
 app.get('/api/status', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ paused: FAUCET_PAUSED, message: FAUCET_PAUSED ? MAINTENANCE_MESSAGE : '' });
