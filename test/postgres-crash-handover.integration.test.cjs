@@ -16,7 +16,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       throw new Error('Refusing non-disposable PostgreSQL database');
     }
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 8 });
-    const id = 'handover_crash_test_123456';
+    const id = '44444444-4444-4444-8444-444444444444';
     const txid = 'c'.repeat(64);
     try {
       await pool.query(`CREATE TABLE IF NOT EXISTS faucet_payout_outbox (
