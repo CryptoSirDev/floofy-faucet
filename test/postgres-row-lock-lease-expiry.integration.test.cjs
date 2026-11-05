@@ -25,10 +25,13 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         VALUES ($1,'Ftest',1000000000,'test-wallet','prepared','deadbeef',$2,'worker',1,clock_timestamp()+interval '20 seconds')`, [id, txid]);
       await blocker.query('BEGIN');
       await blocker.query('SELECT request_id FROM public.faucet_payout_outbox WHERE request_id=$1 FOR UPDATE', [id]);
-      const pending = markBroadcast(waiter, { requestId: id, owner: 'worker', epoch: 1, txid, broadcastTxid: txid });
-      // Confirm the queued UPDATE is blocked by the row lock before expiring the lease.
+      // Capture connection IDs before starting the blocked UPDATE: pg client
+      // queues queries on one connection, so asking waiter for its PID later
+      // would itself wait behind the blocked UPDATE.
       const blockerPid = (await blocker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
       const waiterPid = (await waiter.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const pending = markBroadcast(waiter, { requestId: id, owner: 'worker', epoch: 1, txid, broadcastTxid: txid });
+      // Confirm the queued UPDATE is blocked by the row lock before expiring the lease.
       let waiting = false;
       for (let i = 0; i < 80; i++) {
         const result = await pool.query('SELECT pg_blocking_pids($1::int) AS blockers', [waiterPid]);
