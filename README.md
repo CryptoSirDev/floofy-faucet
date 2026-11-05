@@ -266,3 +266,5 @@ The staging `claim-journal-atomic.cjs` now checks UUID structure, rejects reserv
 ### Concurrent PostgreSQL journal integration test
 
 `test/postgres-live-claim-journal.integration.test.cjs` adds an opt-in test of two simultaneous `journalClaim` calls against a disposable PostgreSQL database. It requires `RUN_PG_INTEGRATION=1`, `PG_TEST_DATABASE=floofy_claim_test`, a configured `DATABASE_URL` and the `pg` driver. It refuses to alter pre-existing tables named `public.faucet_claim_reservations` or `public.faucet_payment_intents`; run only in a dedicated, empty disposable database. It checks that exactly one request succeeds and exactly one payment intent is stored. **This test has been committed but not yet executed or verified in CI.** No wallet RPC, funds or production database are involved.
+
+The disposable PostgreSQL journal integration test additionally checks replay rejection, address mismatch, reservations older than 24 hours, and future-dated reservations; in each case it verifies that no additional payment intent is created. These checks run via the existing pull-request PostgreSQL workflow. They do not authorize live payouts.
