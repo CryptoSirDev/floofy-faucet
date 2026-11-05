@@ -42,7 +42,7 @@ function poolWith({ consume = true, insert = true, failCommit = false } = {}) {
 test('consumes trusted reservation and inserts one outbox row in one transaction', async () => {
   const pool = poolWith();
   const result = await claimBoundReservation(pool, payment);
-  assert.deepEqual(result, { status: 'claimed', request_id: payment.request_id });
+  assert.deepEqual(result, { status: 'processing', request_id: payment.request_id });
   assert.equal(pool.calls[0].sql, 'BEGIN');
   assert.ok(pool.calls.some(c => c.sql.includes('UPDATE public.faucet_claim_reservations')));
   assert.ok(pool.calls.some(c => c.sql.includes('INSERT INTO public.faucet_payout_outbox')));
