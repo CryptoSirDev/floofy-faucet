@@ -20,7 +20,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       await client.query('SET search_path TO floofy_migration_test');
       await client.query(sql);
       await client.query(sql);
-      const id = 'migration_test_123';
+      const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
       await client.query(`INSERT INTO faucet_reservations
         (request_id,address,amount_sat,wallet_id,status,expires_at)
         VALUES ($1,$2,$3,$4,'reserved',NOW()+interval '1 hour')`,
@@ -35,7 +35,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       assert.equal(result.rows[0].status, 'claimed');
       assert.equal(result.rows[0].lease_epoch, '0');
       await assert.rejects(client.query(`INSERT INTO faucet_payout_outbox
-        (request_id,address,amount_sat,wallet_id,status) VALUES ('orphan','Fabc',1,'test','claimed')`), /foreign key/);
+        (request_id,address,amount_sat,wallet_id,status) VALUES ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Fabc',1,'test','claimed')`), /foreign key/);
     } finally {
       await client.query('DROP SCHEMA IF EXISTS floofy_migration_test CASCADE');
       await client.end();
