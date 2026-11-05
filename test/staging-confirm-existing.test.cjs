@@ -13,20 +13,21 @@ const rpc = async method => ({
 })[method];
 const options = { requestId: id, environment: 'staging', paymentsEnabled: false, faucetPaused: true };
 const makeDb = (mutate = () => {}) => {
+  const current = { ...row };
   let reads = 0, writes = 0;
   const db = {
     get reads() { return reads; }, get writes() { return writes; },
     async query(sql, params) {
       if (/^SELECT/.test(sql)) {
         reads++;
-        mutate(reads, row);
-        return { rows: [{ ...row }] };
+        mutate(reads, current);
+        return { rows: [{ ...current }] };
       }
       if (/UPDATE public\.faucet_payout_outbox/.test(sql)) {
         writes++;
         const [, status, expectedTx, raw, epoch] = params;
-        if (row.status !== status || row.txid !== expectedTx ||
-            row.raw_tx !== raw || row.lease_epoch !== epoch) return { rows: [] };
+        if (current.status !== status || current.txid !== expectedTx ||
+            current.raw_tx !== raw || current.lease_epoch !== epoch) return { rows: [] };
         return { rows: [{ request_id: id, status: 'confirmed', txid }] };
       }
       throw Error('Unexpected query');
