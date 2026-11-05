@@ -62,6 +62,7 @@ jobs:
             test/postgres-expired-lease-handover.integration.test.cjs
             test/postgres-lost-lease-ack.integration.test.cjs
             test/postgres-slow-core-lease-expiry.integration.test.cjs
+            test/postgres-row-lock-lease-expiry.integration.test.cjs
           )
           for test_file in "${tests[@]}"; do
             echo "::group::${test_file} (fresh database)"
