@@ -41,4 +41,49 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       await client.end();
     }
   });
+  test('VPS-shaped migration preserves legacy reservations and rejects incomplete bindings', async () => {
+    if (process.env.PG_TEST_DATABASE !== 'floofy_claim_test' ||
+        new URL(process.env.DATABASE_URL).pathname !== '/floofy_claim_test') {
+      throw Error('Refusing non-disposable PostgreSQL');
+    }
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    await client.connect();
+    try {
+      await client.query(`CREATE TABLE public.faucet_claim_reservations (
+        request_id uuid PRIMARY KEY,
+        ip_hash text NOT NULL,
+        address_hash text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        status text NOT NULL DEFAULT 'reserved'
+          CHECK (status IN ('reserved','processing','sent','uncertain','failed'))
+      )`);
+      const ids = ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'];
+      for (const [i, id] of ids.entries()) {
+        await client.query(`INSERT INTO public.faucet_claim_reservations
+          (request_id, ip_hash, address_hash) VALUES ($1,$2,$3)`,
+          [id, String(i + 1).repeat(64), String(i + 3).repeat(64)]);
+      }
+      const sql = fs.readFileSync(path.join(__dirname,
+        '../migrations/003_vps_schema_compat_staging.sql'), 'utf8');
+      await client.query(sql);
+      const rows = (await client.query(`SELECT request_id,status,address,amount_sat,wallet_id
+        FROM public.faucet_claim_reservations ORDER BY request_id`)).rows;
+      assert.equal(rows.length, 2);
+      assert.deepEqual(rows.map(row => row.request_id), ids);
+      assert.ok(rows.every(row => row.status === 'reserved' &&
+        row.address === null && row.amount_sat === null && row.wallet_id === null));
+      await assert.rejects(client.query(`UPDATE public.faucet_claim_reservations
+        SET address=$2 WHERE request_id=$1`, [ids[0], 'F' + 'A'.repeat(33)]),
+        /faucet_claim_bound_fields_check/);
+      const outbox = await client.query(`SELECT count(*)::int AS n
+        FROM public.faucet_payout_outbox`);
+      assert.equal(outbox.rows[0].n, 0);
+    } finally {
+      await client.query('DROP TABLE IF EXISTS public.faucet_payout_outbox');
+      await client.query('DROP TABLE IF EXISTS public.faucet_claim_reservations');
+      await client.end();
+    }
+  });
+
 }
