@@ -71,6 +71,7 @@ jobs:
             test/postgres-failure-safety-guard.integration.test.cjs
             test/postgres-uncertain-confirmed-observation.integration.test.cjs
             test/postgres-concurrent-chain-observation.integration.test.cjs
+            test/postgres-confirm-observed-cas.integration.test.cjs
           )
           for test_file in "${tests[@]}"; do
             echo "::group::${test_file} (fresh database)"
