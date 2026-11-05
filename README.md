@@ -262,3 +262,7 @@ The production VPS currently uses PostgreSQL for claim reservations and a separa
 ### Claim journal hardening
 
 The staging `claim-journal-atomic.cjs` now checks UUID structure, rejects reservations with future timestamps and reports a failed rollback as an `AggregateError` requiring manual reconciliation. Offline tests cover malformed IDs and rollback failures. **No PostgreSQL integration execution or live gateway validation is claimed by these commits.** Payment activation remains blocked.
+
+### Concurrent PostgreSQL journal integration test
+
+`test/postgres-live-claim-journal.integration.test.cjs` adds an opt-in test of two simultaneous `journalClaim` calls against a disposable PostgreSQL database. It requires `RUN_PG_INTEGRATION=1`, `PG_TEST_DATABASE=floofy_claim_test`, a configured `DATABASE_URL` and the `pg` driver. It refuses to alter pre-existing tables named `public.faucet_claim_reservations` or `public.faucet_payment_intents`; run only in a dedicated, empty disposable database. It checks that exactly one request succeeds and exactly one payment intent is stored. **This test has been committed but not yet executed or verified in CI.** No wallet RPC, funds or production database are involved.
