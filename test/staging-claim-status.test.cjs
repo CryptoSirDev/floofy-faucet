@@ -10,7 +10,7 @@ test('staging status is authenticated, read-only, parameterized and excludes sen
   process.env.FAUCET_PAUSED = 'true';
   const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const calls = [];
-  const pool = { connect() {}, async query(sql, args) {
+  const pool = { options: { database: 'floofy_claim_test' }, connect() {}, async query(sql, args) {
     calls.push({ sql, args });
     return { rows: [{ request_id: id, reservation_status: 'claimed', payout_status: 'prepared',
       address: 'secret', raw_tx: 'private' }] };
