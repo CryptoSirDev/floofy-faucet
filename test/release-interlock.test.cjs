@@ -18,15 +18,18 @@ test('request route refuses claims when paused or integration is disabled', () =
   assert.match(server, /res\.status\(503\)/);
 });
 
-test('request route does not invoke payment or reservation gateway endpoints', () => {
+test('request route only reaches reservation gateway after both hardcoded safety interlocks', () => {
   const routeStart = server.indexOf("app.post('/api/request'");
   assert.ok(routeStart !== -1, 'request endpoint must exist');
   const routeEnd = server.indexOf('\n});', routeStart);
   assert.ok(routeEnd > routeStart, 'request endpoint must have a closing block');
   const route = server.slice(routeStart, routeEnd);
-  assert.doesNotMatch(route, /gatewayPost\s*\(/);
-  const executable = route.replace(/\/\/[^\n]*/g, '');
-  assert.doesNotMatch(executable, /internal\/(?:payment|claim-reserve)/);
+  assert.match(route, /if\s*\(FAUCET_PAUSED\s*\|\|\s*!CLAIMS_INTEGRATION_ENABLED\)/);
+  assert.match(route, /if\s*\(!PAYOUT_INTEGRATION_APPROVED\)/);
+  assert.match(server, /const\s+PAYOUT_INTEGRATION_APPROVED\s*=\s*false\s*;/);
+  assert.match(route, /reserveBoundClaimFromRender\s*\(/);
+  assert.match(route, /gatewayPost\s*\('\/internal\/claim-consume'/);
+  assert.doesNotMatch(route, /gatewayPost\s*\('\/internal\/payment'/);
 });
 
 test('gateway client requires HTTPS and API key', () => {
