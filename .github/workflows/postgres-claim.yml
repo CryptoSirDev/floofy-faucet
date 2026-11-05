@@ -54,6 +54,7 @@ jobs:
             test/postgres-immutability.integration.test.cjs
             test/postgres-concurrent-preparation.integration.test.cjs
             test/postgres-bound-reservation.integration.test.cjs
+            test/postgres-prototype-http.integration.test.cjs
           )
           for test_file in "${tests[@]}"; do
             echo "::group::${test_file} (fresh database)"
