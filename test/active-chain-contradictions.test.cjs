@@ -33,7 +33,7 @@ test('contradictory block membership despite stable height holds', async () => {
 test('two consistent checks allow observation but do not mutate or broadcast', async () => {
   const { rpc, calls } = mockWithHashes([blockhash, blockhash]);
   assert.equal((await inspectActiveChain(rpc, row)).action, 'would-confirm-existing');
-  assert.deepEqual(calls, ['gettransaction','getblockheader','getblockhash','getblock','getblockhash']);
+  assert.deepEqual(calls, ['gettransaction','getblockheader','getblockhash','getblock','getblockhash','gettransaction']);
 });
 test('missing final observation fails closed', async () => {
   const { rpc } = mockWithHashes([blockhash, undefined]);
