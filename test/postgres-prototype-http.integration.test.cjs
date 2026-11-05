@@ -70,7 +70,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         request_id: requestId, address: 'F' + 'B'.repeat(33), amount_sat: 999999999
       });
       assert.equal(claimed.code, 200);
-      assert.equal(claimed.body.status, 'claimed');
+      assert.equal(claimed.body.status, 'processing');
       assert.equal((await post('/prototype/claim-consume', { request_id: requestId })).code, 400);
       const rows = await pool.query('SELECT address, amount_sat, wallet_id FROM public.faucet_payout_outbox');
       assert.equal(rows.rowCount, 1);
