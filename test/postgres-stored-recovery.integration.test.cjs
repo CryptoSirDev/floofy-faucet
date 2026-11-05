@@ -20,7 +20,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       await client.query('CREATE SCHEMA IF NOT EXISTS floofy_stored_recovery_test');
       await client.query('SET search_path TO floofy_stored_recovery_test');
       await client.query(migration);
-      const id = 'stored_recovery_123';
+      const id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
       const address = 'F' + 'A'.repeat(33);
       await client.query(`INSERT INTO faucet_reservations
         (request_id,address,amount_sat,wallet_id,status,expires_at)
