@@ -63,6 +63,18 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       const claims = await Promise.all(Array.from({ length: 8 }, () => post('/internal/claim-consume', forged)));
       assert.equal(claims.filter(x => x.code === 200 && x.body.status === 'processing').length, 1);
       assert.equal(claims.filter(x => x.code === 400).length, 7);
+      const status = await new Promise((resolve, reject) => {
+        const req = http.request({ hostname: '127.0.0.1', port,
+          path: '/internal/claim-status?request_id=' + first.body.request_id,
+          method: 'GET', headers: { 'x-api-key': key } }, res => {
+          let body = ''; res.on('data', chunk => body += chunk);
+          res.on('end', () => resolve({ code: res.statusCode, body: JSON.parse(body) }));
+        });
+        req.on('error', reject); req.end();
+      });
+      assert.equal(status.code, 200);
+      assert.equal(status.body.reservation_status, 'processing');
+      assert.equal(status.body.payout_status, 'claimed');
       const reservations = (await pool.query('SELECT request_id,status,address,amount_sat,wallet_id,consumed_at FROM public.faucet_claim_reservations')).rows;
       const outbox = (await pool.query('SELECT request_id,status,address,amount_sat,wallet_id FROM public.faucet_payout_outbox')).rows;
       assert.equal(reservations.length, 1);
