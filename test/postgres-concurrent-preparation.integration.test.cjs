@@ -15,7 +15,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       throw new Error('Refusing non-disposable PostgreSQL database');
     }
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
-    const id = 'concurrent_prepare_attack_123';
+    const id = '22222222-2222-4222-8222-222222222222';
     const a = await pool.connect();
     const b = await pool.connect();
     let inA = false, inB = false;
