@@ -254,3 +254,7 @@ The production VPS currently uses PostgreSQL for claim reservations and a separa
 ### Disposable payment-intent schema
 
 `migrations/002_payment_intents_staging.sql` defines the PostgreSQL `public.faucet_payment_intents` table expected by `lib/claim-journal-atomic.cjs`. It references the existing VPS-shaped reservation table and requires a unique request ID. Prepared/broadcast/uncertain/confirmed records must include a signed raw transaction and TXID. **Do not apply this file to production:** it has not been tested against the live schema or migration history and does not implement payment signing, broadcasting or recovery. The SQL and journal adapter still require disposable-database integration tests before any deployment decision.
+
+### Atomic journal validation (offline)
+
+`lib/claim-journal-atomic.cjs` now derives the reservation address HMAC from a server-held secret instead of accepting an arbitrary caller-provided address hash. `test/claim-journal-atomic.test.cjs` covers commit, rollback when the reservation cannot be consumed, rollback on duplicate intent and rejection of invalid identity/secret. These are **mocked SQL interaction tests**, not PostgreSQL concurrency tests or live gateway tests. The current VPS reservation hashes must be verified for algorithm compatibility before deployment; this staging adapter is not wired to the payment endpoint. No funds are enabled.
