@@ -8,7 +8,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
   test('Staging HTTP integration requires disposable PostgreSQL', { skip: true }, () => {});
 } else {
   const { Pool } = require('pg');
-  const { createStagingClaimServer } = require('../lib/staging-claim-server.cjs');
+  const { createGatewayStagingBridge } = require('../lib/gateway-staging-bridge.cjs');
   test('staging server atomically reserves and consumes exactly once despite forged input and replay', async () => {
     if (process.env.PG_TEST_DATABASE !== 'floofy_claim_test') throw Error('Refusing non-disposable DB');
     const original = { payments: process.env.PAYMENTS_ENABLED, pause: process.env.FAUCET_PAUSED };
@@ -40,7 +40,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         request_id uuid PRIMARY KEY REFERENCES public.faucet_claim_reservations(request_id),
         address text NOT NULL, amount_sat bigint NOT NULL, wallet_id text NOT NULL,
         status text NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp())`);
-      server = createStagingClaimServer({ pool, policy, apiKey: key, environment: 'staging' });
+      server = createGatewayStagingBridge({ pool, policy, apiKey: key, environment: 'staging' });
       await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
       const port = server.address().port;
       const post = (path, payload, token = key) => new Promise((resolve, reject) => {
@@ -52,15 +52,15 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         req.on('error', reject); req.end(JSON.stringify(payload));
       });
       assert.equal((await post('/internal/payment', {})).code, 404);
-      assert.equal((await post('/prototype/claim-reserve', {}, 'bad')).code, 401);
-      const first = await post('/prototype/claim-reserve', { address: 'F' + 'B'.repeat(33), amount_sat: 1, wallet_id: 'reserve-wallet' });
+      assert.equal((await post('/internal/claim-reserve', {}, 'bad')).code, 401);
+      const first = await post('/internal/claim-reserve', { address: 'F' + 'B'.repeat(33), amount_sat: 1, wallet_id: 'reserve-wallet' });
       assert.equal(first.code, 200);
       assert.equal(first.body.allowed, true);
-      const duplicate = await post('/prototype/claim-reserve', {});
+      const duplicate = await post('/internal/claim-reserve', {});
       assert.equal(duplicate.body.allowed, false);
       assert.equal(duplicate.body.request_id, first.body.request_id);
       const forged = { request_id: first.body.request_id, address: 'F' + 'B'.repeat(33), amount_sat: 1, wallet_id: 'reserve-wallet' };
-      const claims = await Promise.all(Array.from({ length: 8 }, () => post('/prototype/claim-consume', forged)));
+      const claims = await Promise.all(Array.from({ length: 8 }, () => post('/internal/claim-consume', forged)));
       assert.equal(claims.filter(x => x.code === 200 && x.body.status === 'processing').length, 1);
       assert.equal(claims.filter(x => x.code === 400).length, 7);
       const reservations = (await pool.query('SELECT request_id,status,address,amount_sat,wallet_id,consumed_at FROM public.faucet_claim_reservations')).rows;
