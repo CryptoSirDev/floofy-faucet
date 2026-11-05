@@ -14,7 +14,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       throw new Error('Refusing non-disposable PostgreSQL database');
     }
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-    const id = 'immutable_sql_attack_123';
+    const id = '77777777-7777-4777-8777-777777777777';
     try {
       const migration = fs.readFileSync(path.join(__dirname, '../migrations/001_recoverable_payouts.sql'), 'utf8');
       await pool.query(migration);
