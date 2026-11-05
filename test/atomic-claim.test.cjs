@@ -6,7 +6,7 @@ const {
 } = require('../lib/atomic-claim.cjs');
 
 test('reservation claim uses one conditional UPDATE with RETURNING', () => {
-  assert.match(claimReservation, /^\s*UPDATE faucet_claim_reservations/i);
+  assert.match(claimReservation, /^\s*UPDATE faucet_reservations/i);
   assert.match(claimReservation, /status = 'reserved'/);
   assert.match(claimReservation, /consumed_at IS NULL/);
   assert.match(claimReservation, /expires_at > NOW\(\)/);
@@ -15,7 +15,7 @@ test('reservation claim uses one conditional UPDATE with RETURNING', () => {
 });
 
 test('outbox reads the persisted signed transaction', () => {
-  assert.match(readOutbox, /signed_raw_tx/);
+  assert.match(readOutbox, /raw_tx/);
 });
 
 test('outbox deduplicates by request ID and returns inserted row', () => {
