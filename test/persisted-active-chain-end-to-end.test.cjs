@@ -100,3 +100,22 @@ test('DB failure after chain verification holds rather than confirming', async (
   assert.equal(result.action, 'hold-for-review');
   assert.match(result.reason, /database unavailable/);
 });
+
+test('prepared, confirmed and unknown states cannot propose another confirmation', async () => {
+  for (const status of ['prepared', 'confirmed', 'claimed', 'unexpected']) {
+    const db = {
+      calls: 0,
+      async query() {
+        this.calls++;
+        return { rows: [{ ...row, status }] };
+      }
+    };
+    const rpc = makeRpc();
+    const result = await inspectPersistedActiveChain(db, rpc, request_id);
+    assert.deepEqual(result, {
+      action: 'hold-for-review', reason: 'payout state not eligible for confirmation'
+    });
+    assert.equal(db.calls, 1);
+    assert.deepEqual(rpc.calls, []);
+  }
+});
