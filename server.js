@@ -1,6 +1,8 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const { createHmac, timingSafeEqual } = require('node:crypto');
+const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
 const app = express();
 
 // Ativar trust proxy para obter o IP real do utilizador no Render
@@ -31,7 +33,12 @@ db.run(`CREATE TABLE IF NOT EXISTS faucet_claims (
 // FloofyChain VPS gateway. Never store Core RPC credentials in Render.
 const GATEWAY_URL = (process.env.GATEWAY_URL || '').replace(/\/$/, '');
 const GATEWAY_API_KEY = process.env.GATEWAY_API_KEY || '';
+const CLAIM_HASH_SECRET = process.env.CLAIM_HASH_SECRET || '';
+const CLAIMS_INTEGRATION_ENABLED = process.env.CLAIMS_INTEGRATION_ENABLED === 'true';
 // Safety interlock: payments remain disabled until HTTPS, wallet and reconciliation tests pass.
+// Two independent interlocks: Render pause and explicit reviewed gateway approval.
+// Keep approval false until the VPS verifies reservation ownership and recovery.
+const PAYOUT_INTEGRATION_APPROVED = false;
 const FAUCET_PAUSED = true;
 const MAINTENANCE_MESSAGE =
   'Faucet payouts are temporarily paused while the secure gateway migration is completed. Thank you for your patience! 🐹💙';
@@ -89,15 +96,187 @@ app.get('/api/balance', async (req, res) => {
   }
 });
 
-// Deliberately disabled until the gateway's HTTPS endpoint and idempotent
-// payout integration have been tested end-to-end. No direct RPC fallback.
-app.post('/api/request', (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  return res.status(503).json({
-    success: false,
-    paused: true,
-    message: MAINTENANCE_MESSAGE
+// Read-only integration preview. The VPS gateway must enforce reservation ownership
+// before enabling any real payout. A request_id alone is NOT payment authorization.
+function claimHash(value) {
+  if (!CLAIM_HASH_SECRET || CLAIM_HASH_SECRET.length < 32) throw new Error('Missing claim hash secret');
+  return createHmac('sha256', CLAIM_HASH_SECRET).update(value).digest('hex');
+}
+async function gatewayPost(endpoint, payload) {
+  if (!GATEWAY_URL.startsWith('https://') || !GATEWAY_API_KEY) throw new Error('Secure gateway not configured');
+  const response = await fetch(GATEWAY_URL + endpoint, {
+    method: 'POST',
+    headers: { 'X-API-Key': GATEWAY_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10000)
   });
+  const data = await response.json();
+  return { status: response.status, data };
+}
+// Gateway v2 contract: Render computes the IP fingerprint; the gateway validates
+// the destination with Core and derives address_hash itself. Never accept
+// ip_hash, amount or wallet_id supplied by a browser.
+function buildBoundClaimPayload(ip, address) {
+  return renderClaimPayload({ ip, address, secret: CLAIM_HASH_SECRET });
+}
+
+// Development-only integration helper, intentionally not exposed as a public
+// HTTP route and never called while the faucet is paused.
+async function reserveBoundClaimFromRender(req, address) {
+  if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED)
+    throw new Error('Faucet integration not approved');
+  const payload = buildBoundClaimPayload(req.ip, address);
+  return gatewayPost('/internal/claim-reserve', payload);
+}
+
+// Operator-only, staging-only end-to-end exercise. This never touches the public
+// claim route, production gateway, live Core, signing or broadcast.
+const GATEWAY_STAGING_URL = (process.env.GATEWAY_STAGING_URL || '').replace(/\/$/, '');
+const GATEWAY_STAGING_API_KEY = process.env.GATEWAY_STAGING_API_KEY || '';
+const GATEWAY_STAGING_CLAIM_SECRET = process.env.GATEWAY_STAGING_CLAIM_SECRET || '';
+const GATEWAY_STAGING_TEST_TOKEN = process.env.GATEWAY_STAGING_TEST_TOKEN || '';
+
+function safeSecretMatch(provided, expected) {
+  if (typeof provided !== 'string' || !expected) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+async function stagingGatewayRequest(endpoint, method, payload) {
+  if (!GATEWAY_STAGING_URL.startsWith('https://') ||
+      !GATEWAY_STAGING_API_KEY || GATEWAY_STAGING_API_KEY.length < 32 ||
+      !GATEWAY_STAGING_CLAIM_SECRET || GATEWAY_STAGING_CLAIM_SECRET.length < 32 ||
+      !GATEWAY_STAGING_TEST_TOKEN || GATEWAY_STAGING_TEST_TOKEN.length < 32) {
+    throw new Error('Staging integration is not configured');
+  }
+  const response = await fetch(GATEWAY_STAGING_URL + endpoint, {
+    method,
+    headers: {
+      'X-API-Key': GATEWAY_STAGING_API_KEY,
+      ...(payload ? { 'Content-Type': 'application/json' } : {})
+    },
+    ...(payload ? { body: JSON.stringify(payload) } : {}),
+    signal: AbortSignal.timeout(10000)
+  });
+  let data;
+  try { data = await response.json(); }
+  catch { throw new Error('Invalid staging gateway response'); }
+  return { status: response.status, data };
+}
+
+// This route is for a manually authenticated operator test only. The browser
+// faucet and /api/request never call it. A successful run consumes a disposable
+// staging reservation into the test outbox; the staging gateway has no broadcast.
+app.post('/internal/staging/claim-test', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (!safeSecretMatch(req.get('x-staging-test-token'), GATEWAY_STAGING_TEST_TOKEN)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const address = req.body?.address;
+  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
+    return res.status(400).json({ error: 'Invalid FLOOF address' });
+  }
+  try {
+    const payload = renderClaimPayload({
+      ip: req.ip,
+      address,
+      secret: GATEWAY_STAGING_CLAIM_SECRET
+    });
+    const reservation = await stagingGatewayRequest('/internal/claim-reserve', 'POST', payload);
+    if (reservation.status !== 201) {
+      return res.status(reservation.status === 429 ? 429 : 502).json({
+        stage: 'reserve',
+        gateway_status: reservation.status,
+        result: reservation.data
+      });
+    }
+    const requestId = reservation.data?.request_id;
+    if (typeof requestId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+      return res.status(502).json({ stage: 'reserve', error: 'Invalid reservation response; reconcile staging' });
+    }
+
+    const consumed = await stagingGatewayRequest('/internal/claim-consume', 'POST', { request_id: requestId });
+    if (consumed.status !== 202) {
+      return res.status(502).json({
+        stage: 'consume',
+        request_id: requestId,
+        gateway_status: consumed.status,
+        result: consumed.data,
+        instruction: 'Inspect claim status before any manual retry'
+      });
+    }
+
+    const status = await stagingGatewayRequest(
+      '/internal/claim-status?request_id=' + encodeURIComponent(requestId), 'GET'
+    );
+    if (status.status !== 200) {
+      return res.status(502).json({
+        stage: 'status',
+        request_id: requestId,
+        gateway_status: status.status,
+        instruction: 'Reservation was consumed; inspect staging PostgreSQL before retry'
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      mode: 'staging-no-broadcast',
+      request_id: requestId,
+      reservation_status: status.data.reservation_status,
+      payout_status: status.data.payout_status
+    });
+  } catch (error) {
+    console.error('Staging claim test failed:', error.message);
+    return res.status(503).json({ error: 'Staging test unavailable; inspect request state before retry' });
+  }
+});
+
+app.post('/api/request', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED) {
+    return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
+  }
+  // This path stays unreachable while FAUCET_PAUSED is true and the
+  // independently reviewed payout approval is false. Never retry a
+  // reservation or consume after an ambiguous gateway response.
+  if (!PAYOUT_INTEGRATION_APPROVED) {
+    return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
+  }
+  const address = req.body?.address;
+  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
+    return res.status(400).json({ success: false, message: 'Invalid FLOOF address.' });
+  }
+  let requestId;
+  try {
+    const reserved = await reserveBoundClaimFromRender(req, address);
+    if (reserved.status === 429) {
+      return res.status(429).json({ success: false, message: 'This IP or address has already claimed within 24 hours.' });
+    }
+    if (reserved.status !== 201 || reserved.data?.allowed !== true) {
+      return res.status(503).json({ success: false, message: 'Claim unavailable. Please contact the faucet operator before retrying.' });
+    }
+    requestId = reserved.data.request_id;
+    if (typeof requestId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+      throw new Error('Reservation returned invalid request ID');
+    }
+    const consumed = await gatewayPost('/internal/claim-consume', { request_id: requestId });
+    if (consumed.status !== 202 || consumed.data?.accepted !== true) {
+      throw new Error('Reservation not confirmed as consumed');
+    }
+    return res.status(202).json({
+      success: true, request_id: requestId,
+      message: 'Claim accepted. Payment is pending; this is not a transaction confirmation.'
+    });
+  } catch (error) {
+    console.error('Claim state uncertain; do not retry automatically:', error.message);
+    return res.status(503).json({
+      success: false, request_id: requestId || undefined,
+      message: 'Claim status uncertain. Please contact the faucet operator before retrying.'
+    });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

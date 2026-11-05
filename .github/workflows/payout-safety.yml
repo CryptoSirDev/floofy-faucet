@@ -1,0 +1,34 @@
+name: Payout safety checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  payout-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Run offline safety unit tests
+        run: npm test
+      - name: Parse integrated gateway and Render server
+        run: |
+          node --check gateway/server-v2.mjs
+          node --check gateway/claim-routes-v2.cjs
+          node --check gateway/claim-store-v2.cjs
+          node --check gateway/bound-payment-authorization.cjs
+          node --check server.js

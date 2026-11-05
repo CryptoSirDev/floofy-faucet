@@ -272,7 +272,7 @@
         async function submitClaim() {
             if (faucetPaused) {
                 document.getElementById('msg').style.color = '#aa6e15';
-                document.getElementById('msg').innerText = 'Faucet payouts are temporarily paused for the v4 network upgrade.';
+                document.getElementById('msg').innerText = 'Faucet payouts are temporarily paused while payment integration is completed.';
                 return;
             }
             const addressInput = document.getElementById('address');
@@ -305,7 +305,7 @@
                     msg.innerHTML = `${data.message} <br><a href="${explorerUrl}" target="_blank" rel="noopener noreferrer" style="color: #28a745; text-decoration: underline; font-weight: bold;">TXID: ${data.txid.substring(0, 12)}...</a>`;
                     loadBalance();
                 } else {
-                    msg.innerText = data.message;
+                    msg.innerText = data.message || data.error || 'Claim could not be completed. Please check the faucet status.';
                 }
             } catch (e) {
                 msg.style.color = 'red';
