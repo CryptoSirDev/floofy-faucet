@@ -19,6 +19,10 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 8 });
     const id = '88888888-8888-4888-8888-888888888888';
     try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS public.faucet_claim_reservations (
+        request_id uuid PRIMARY KEY, ip_hash text NOT NULL, address_hash text NOT NULL,
+        status text NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+      )`);
       await pool.query(`CREATE TABLE IF NOT EXISTS faucet_payout_outbox (
         request_id text PRIMARY KEY, address text NOT NULL, amount_sat bigint NOT NULL,
         wallet_id text NOT NULL, status text NOT NULL, txid text, raw_tx text,
