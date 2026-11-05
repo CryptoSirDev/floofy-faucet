@@ -238,9 +238,45 @@ app.post('/api/request', async (req, res) => {
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED) {
     return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
   }
-  // Production payout gateway is not authorized until durable journal
-  // and reservation identity checks are integrated and verified.
-  return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
+  // This path stays unreachable while FAUCET_PAUSED is true and the
+  // independently reviewed payout approval is false. Never retry a
+  // reservation or consume after an ambiguous gateway response.
+  if (!PAYOUT_INTEGRATION_APPROVED) {
+    return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
+  }
+  const address = req.body?.address;
+  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
+    return res.status(400).json({ success: false, message: 'Invalid FLOOF address.' });
+  }
+  let requestId;
+  try {
+    const reserved = await reserveBoundClaimFromRender(req, address);
+    if (reserved.status === 429) {
+      return res.status(429).json({ success: false, message: 'This IP or address has already claimed within 24 hours.' });
+    }
+    if (reserved.status !== 201 || reserved.data?.allowed !== true) {
+      return res.status(503).json({ success: false, message: 'Claim unavailable. Please contact the faucet operator before retrying.' });
+    }
+    requestId = reserved.data.request_id;
+    if (typeof requestId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+      throw new Error('Reservation returned invalid request ID');
+    }
+    const consumed = await gatewayPost('/internal/claim-consume', { request_id: requestId });
+    if (consumed.status !== 202 || consumed.data?.accepted !== true) {
+      throw new Error('Reservation not confirmed as consumed');
+    }
+    return res.status(202).json({
+      success: true, request_id: requestId,
+      message: 'Claim accepted. Payment is pending; this is not a transaction confirmation.'
+    });
+  } catch (error) {
+    console.error('Claim state uncertain; do not retry automatically:', error.message);
+    return res.status(503).json({
+      success: false, request_id: requestId || undefined,
+      message: 'Claim status uncertain. Please contact the faucet operator before retrying.'
+    });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
