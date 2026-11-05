@@ -11,6 +11,11 @@ ALTER TABLE public.faucet_claim_reservations
 -- Do not backfill an address from a hash: SHA-256 hashes cannot recover it.
 -- New reservations must populate all identity fields from trusted server-side logic.
 ALTER TABLE public.faucet_claim_reservations
+  DROP CONSTRAINT IF EXISTS faucet_claim_reservations_status_check;
+ALTER TABLE public.faucet_claim_reservations
+  ADD CONSTRAINT faucet_claim_reservations_status_check
+    CHECK (status IN ('reserved','claimed','processing','sent','uncertain','failed'));
+ALTER TABLE public.faucet_claim_reservations
   ADD CONSTRAINT faucet_claim_amount_positive CHECK (amount_sat IS NULL OR amount_sat > 0),
   ADD CONSTRAINT faucet_claim_expiry_after_creation CHECK (expires_at IS NULL OR expires_at > created_at);
 CREATE TABLE IF NOT EXISTS public.faucet_payout_outbox (
