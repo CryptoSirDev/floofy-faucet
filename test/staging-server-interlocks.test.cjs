@@ -25,7 +25,8 @@ test('Render remains paused and does not call the reservation helper in public r
 
 test('staging never connects to live Core or live SQLite journal',()=>{
  assert.match(gateway,/env\.RPC_URL !== 'http:\/\/127\.0\.0\.1:16664'/);
- assert.match(gateway,/staging-payments\.sqlite/);
+ assert.match(gateway,/staging\/database\.env/);
+ assert.match(gateway,/staging\/gateway\.env/);
  assert.doesNotMatch(gateway,/new DatabaseSync\('\/var\/lib\/floofy-rpc-gateway\/payments\.sqlite'/);
  assert.doesNotMatch(gateway,/rpc\(['"]sendtoaddress['"]/);
 });
