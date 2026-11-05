@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { createStagingClaimServer } = require('../lib/staging-claim-server.cjs');
 
 const key = 'staging-only-' + 'x'.repeat(40);
-const pool = { connect() { throw Error('No database should be touched during startup'); } };
+const pool = { options: { database: 'floofy_claim_test' }, connect() { throw Error('No database should be touched during startup'); } };
 const policy = {
   resolveReservation() { throw Error('No reservation should be resolved'); },
   resolvePayment() { throw Error('No payment should be resolved'); }
@@ -72,3 +72,22 @@ test('staging server refuses missing or ambiguous pause flags', () => {
       assert.throws(() => createStagingClaimServer({ pool, policy, apiKey: key, environment: 'staging' }), /refuses/));
   }
 });
+
+test('staging server rejects pool targeting a different database despite test env marker', () =>
+  withEnvironment({ PG_TEST_DATABASE: 'floofy_claim_test', PAYMENTS_ENABLED: 'false', FAUCET_PAUSED: 'true' }, () => {
+    for (const options of [
+      undefined,
+      { database: 'production' },
+      { connectionString: 'postgresql://localhost/floofy_claim_prod' },
+      { connectionString: 'not-a-url' }
+    ]) {
+      assert.throws(() => createStagingClaimServer({
+        pool: { ...pool, options }, policy, apiKey: key, environment: 'staging'
+      }), /PostgreSQL|connection configuration/);
+    }
+    const server = createStagingClaimServer({
+      pool: { ...pool, options: { connectionString: 'postgresql://localhost/floofy_claim_test' } },
+      policy, apiKey: key, environment: 'staging'
+    });
+    assert.equal(server.listening, false);
+  }));
