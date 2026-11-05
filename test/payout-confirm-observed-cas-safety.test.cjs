@@ -10,7 +10,7 @@ const txid = 'a'.repeat(64);
 const blockhash = 'b'.repeat(64);
 const base = {
   requestId, txid, expectedStatus: 'uncertain', expectedRawTx: 'deadbeef',
-  expectedLeaseEpoch: 7,
+  expectedLeaseEpoch: 7, expectedLeaseOwner: 'worker-a',
   evidence: { action: 'would-confirm-existing', txid, blockhash }
 };
 
@@ -25,10 +25,11 @@ function simulatedCAS(current) {
       assert.match(sql, /lower\(txid\)=lower\(\$3\)/);
       assert.match(sql, /raw_tx=\$4/);
       assert.match(sql, /lease_epoch=\$5::bigint/);
-      const [id, status, idTx, raw, epoch] = params;
+      const [id, status, idTx, raw, epoch, owner] = params;
       if (current.request_id === id && current.status === status &&
           current.txid.toLowerCase() === idTx.toLowerCase() &&
-          current.raw_tx === raw && current.lease_epoch === epoch) {
+          current.raw_tx === raw && current.lease_epoch === epoch &&
+          current.lease_owner === owner) {
         current.status = 'confirmed';
         return { rows: [{ request_id: id, status: 'confirmed', txid: current.txid }] };
       }
@@ -38,7 +39,7 @@ function simulatedCAS(current) {
 }
 
 test('matching persisted payout can be confirmed once; replay does not match', async () => {
-  const db = simulatedCAS({ request_id: requestId, status: 'uncertain', txid, raw_tx: 'deadbeef', lease_epoch: 7 });
+  const db = simulatedCAS({ request_id: requestId, status: 'uncertain', txid, raw_tx: 'deadbeef', lease_epoch: 7, lease_owner: 'worker-a' });
   assert.equal((await markConfirmedObserved(db, base)).status, 'confirmed');
   assert.equal(await markConfirmedObserved(db, base), null);
   assert.equal(db.calls.length, 2);
@@ -47,7 +48,8 @@ test('matching persisted payout can be confirmed once; replay does not match', a
 test('concurrent status, transaction bytes, txid or lease changes reject stale confirmation', async () => {
   for (const patch of [
     { status: 'prepared' }, { status: 'confirmed' },
-    { raw_tx: 'beadfeed' }, { txid: 'c'.repeat(64) }, { lease_epoch: 8 }
+    { raw_tx: 'beadfeed' }, { txid: 'c'.repeat(64) }, { lease_epoch: 8 },
+    { lease_owner: 'worker-b' }, { lease_owner: null }
   ]) {
     const db = simulatedCAS({
       request_id: requestId, status: 'uncertain', txid, raw_tx: 'deadbeef', lease_epoch: 7, ...patch
@@ -66,6 +68,8 @@ test('invalid evidence or parameters never reach the database', async () => {
     { expectedStatus: 'prepared' },
     { expectedRawTx: 'invalid-hex' },
     { expectedLeaseEpoch: -1 },
+    { expectedLeaseOwner: undefined },
+    { expectedLeaseOwner: '' },
     { requestId: 'not-a-uuid' }
   ];
   for (const patch of invalid) {
@@ -78,3 +82,11 @@ test('invalid evidence or parameters never reach the database', async () => {
 // Important limit: the prototype accepts an evidence-shaped object from its
 // caller. These tests prove only compare-and-set behavior, not that evidence
 // came from an authenticated active-chain inspector or remains valid.
+
+test('NULL lease owner is compared safely, without matching another owner', async () => {
+  const db = simulatedCAS({
+    request_id: requestId, status: 'uncertain', txid,
+    raw_tx: 'deadbeef', lease_epoch: 7, lease_owner: null
+  });
+  assert.equal((await markConfirmedObserved(db, { ...base, expectedLeaseOwner: null })).status, 'confirmed');
+});
