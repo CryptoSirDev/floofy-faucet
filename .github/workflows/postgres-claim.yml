@@ -42,6 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PGPASSWORD=testpassword
           tests=(
             test/postgres-claim.integration.test.cjs
             test/postgres-lease.integration.test.cjs
