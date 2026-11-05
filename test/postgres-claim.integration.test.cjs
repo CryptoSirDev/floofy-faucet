@@ -16,7 +16,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       throw new Error('Refusing to run outside dedicated floofy_claim_test database');
     }
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
-    const request_id = 'integration_123456789';
+    const request_id = '11111111-1111-4111-8111-111111111111';
     const address = 'F' + 'A'.repeat(33);
     const payment = { request_id, address, amount_sat: 1000000000, wallet_id: 'test-wallet' };
     try {
