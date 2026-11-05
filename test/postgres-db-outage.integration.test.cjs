@@ -16,7 +16,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
     const address = 'F' + 'A'.repeat(33);
     const base = { address, amount_sat: 1000000000, wallet_id: 'test-wallet' };
-    const ids = ['db_failure_before_commit_123', 'db_failure_after_commit_123'];
+    const ids = ['55555555-5555-4555-8555-555555555555', '66666666-6666-4666-8666-666666666666'];
     try {
       await pool.query(`CREATE TABLE IF NOT EXISTS faucet_reservations (
         request_id text PRIMARY KEY, address text NOT NULL, amount_sat bigint NOT NULL,
