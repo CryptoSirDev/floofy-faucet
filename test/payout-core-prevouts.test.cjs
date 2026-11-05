@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { inspectPrevouts } = require('../lib/payout-core-prevouts.cjs');
+const { inspectPrevouts, parseAmountSat } = require('../lib/payout-core-prevouts.cjs');
 
 const TXID = 'a'.repeat(64);
 const script = '76a914' + '11'.repeat(20) + '88ac';
@@ -42,4 +42,16 @@ test('rejects malformed locking script', async () => {
   await assert.rejects(inspectPrevouts({ rpc: async () => ({
     value: 1, confirmations: 5, scriptPubKey: { hex: 'invalid' }
   }), decoded: decoded() }), /locking script/);
+});
+
+test('parses decimal Core amounts without floating-point multiplication errors', () => {
+  assert.equal(parseAmountSat(1.251), 125100000n);
+  assert.equal(parseAmountSat(0.00000001), 1n);
+  assert.equal(parseAmountSat(1.00000001), 100000001n);
+  assert.equal(parseAmountSat(1.25), 125000000n);
+});
+test('rejects non-atomic, negative and non-finite Core amounts', () => {
+  for (const value of [0, -1, NaN, Infinity, 1.000000001]) {
+    assert.throws(() => parseAmountSat(value));
+  }
 });
