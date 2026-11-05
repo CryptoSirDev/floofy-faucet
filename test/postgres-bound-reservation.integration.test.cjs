@@ -83,7 +83,7 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
         [requestId]
       );
       assert.equal(reservation.rows.length, 1);
-      assert.equal(reservation.rows[0].status, 'claimed');
+      assert.equal(reservation.rows[0].status, 'processing');
       assert.equal(reservation.rows[0].address, address);
       assert.equal(Number(reservation.rows[0].amount_sat), payment.amount_sat);
       assert.equal(reservation.rows[0].wallet_id, payment.wallet_id);
