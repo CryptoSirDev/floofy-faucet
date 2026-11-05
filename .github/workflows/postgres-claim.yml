@@ -38,5 +38,26 @@ jobs:
           node-version: '24'
       - name: Install test-only PostgreSQL driver
         run: npm install --no-save --package-lock=false --ignore-scripts pg@8
-      - name: Test isolated claim and lease integration against disposable PostgreSQL
-        run: node --test --test-concurrency=1 test/postgres-claim.integration.test.cjs test/postgres-lease.integration.test.cjs test/postgres-migration.integration.test.cjs test/postgres-stored-recovery.integration.test.cjs test/postgres-concurrent-recovery.integration.test.cjs test/postgres-crash-handover.integration.test.cjs test/postgres-db-outage.integration.test.cjs test/postgres-immutability.integration.test.cjs test/postgres-concurrent-preparation.integration.test.cjs test/postgres-bound-reservation.integration.test.cjs
+      - name: Run each PostgreSQL integration in a fresh disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            test/postgres-claim.integration.test.cjs
+            test/postgres-lease.integration.test.cjs
+            test/postgres-migration.integration.test.cjs
+            test/postgres-stored-recovery.integration.test.cjs
+            test/postgres-concurrent-recovery.integration.test.cjs
+            test/postgres-crash-handover.integration.test.cjs
+            test/postgres-db-outage.integration.test.cjs
+            test/postgres-immutability.integration.test.cjs
+            test/postgres-concurrent-preparation.integration.test.cjs
+            test/postgres-bound-reservation.integration.test.cjs
+          )
+          for test_file in "${tests[@]}"; do
+            echo "::group::${test_file} (fresh database)"
+            dropdb --if-exists -h 127.0.0.1 -U testuser floofy_claim_test
+            createdb -h 127.0.0.1 -U testuser floofy_claim_test
+            node --test --test-concurrency=1 "${test_file}"
+            echo "::endgroup::"
+          done
