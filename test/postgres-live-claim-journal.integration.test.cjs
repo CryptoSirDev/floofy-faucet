@@ -48,6 +48,27 @@ test('atomic journal: one winner under concurrent PostgreSQL requests', {
     assert.equal(intents.rows[0].request_id, request_id);
     const reservation = await pool.query('SELECT status FROM public.faucet_claim_reservations WHERE request_id=$1', [request_id]);
     assert.equal(reservation.rows[0].status, 'processing');
+    // A replay must not create a second intent or change the first one.
+    await assert.rejects(journalClaim(pool, identity), /Reservation unavailable/);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM public.faucet_payment_intents')).rows[0].n, 1);
+
+    // A different wallet address cannot consume a reserved request.
+    const mismatchId = randomUUID();
+    await pool.query("INSERT INTO public.faucet_claim_reservations(request_id,address_hash,status) VALUES ($1,$2,'reserved')",
+      [mismatchId, addressDigest(address, secret)]);
+    await assert.rejects(journalClaim(pool, { ...identity, request_id: mismatchId, address: 'F' + 'B'.repeat(33) }), /Reservation unavailable/);
+    assert.equal((await pool.query('SELECT status FROM public.faucet_claim_reservations WHERE request_id=$1', [mismatchId])).rows[0].status, 'reserved');
+
+    // Expired and future-dated reservations must remain untouched.
+    for (const age of ["clock_timestamp() - interval '25 hours'", "clock_timestamp() + interval '1 hour'"]) {
+      const id = randomUUID();
+      await pool.query(`INSERT INTO public.faucet_claim_reservations(request_id,address_hash,status,created_at)
+        VALUES ($1,$2,'reserved',${age})`, [id, addressDigest(address, secret)]);
+      await assert.rejects(journalClaim(pool, { ...identity, request_id: id }), /Reservation unavailable/);
+      assert.equal((await pool.query('SELECT status FROM public.faucet_claim_reservations WHERE request_id=$1', [id])).rows[0].status, 'reserved');
+    }
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM public.faucet_payment_intents')).rows[0].n, 1);
+
   } finally {
     if (createdIntents) await pool.query('DROP TABLE public.faucet_payment_intents');
     if (createdReservations) await pool.query('DROP TABLE public.faucet_claim_reservations');
