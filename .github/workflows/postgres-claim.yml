@@ -65,6 +65,7 @@ jobs:
             test/postgres-row-lock-lease-expiry.integration.test.cjs
             test/postgres-state-transition-guard.integration.test.cjs
             test/postgres-initial-state-guard.integration.test.cjs
+            test/postgres-failure-safety-guard.integration.test.cjs
           )
           for test_file in "${tests[@]}"; do
             echo "::group::${test_file} (fresh database)"
