@@ -15,12 +15,15 @@ test('staging gateway fails closed and does not contain a payment broadcast call
  assert.doesNotMatch(gateway,/rpc\(['"]sendtoaddress['"]/);
  assert.doesNotMatch(gateway,/rpc\(['"]sendrawtransaction['"]/);
 });
-test('Render remains paused and does not call the reservation helper in public request route',()=>{
+test('Render remains paused and public claim integration is guarded by explicit approval',()=>{
  assert.match(render,/const PAYOUT_INTEGRATION_APPROVED = false;/);
  assert.match(render,/const FAUCET_PAUSED = true;/);
  const publicRoute=render.split("app.post('/api/request', async (req, res) => {")[1];
  assert.ok(publicRoute);
- assert.doesNotMatch(publicRoute,/reserveBoundClaimFromRender\(/);
+ assert.match(publicRoute,/if \(FAUCET_PAUSED \|\| !CLAIMS_INTEGRATION_ENABLED\)/);
+ assert.match(publicRoute,/if \(!PAYOUT_INTEGRATION_APPROVED\)/);
+ assert.match(publicRoute,/reserveBoundClaimFromRender\(/);
+ assert.match(publicRoute,/\/internal\/claim-consume/);
 });
 
 test('staging never connects to live Core or live SQLite journal',()=>{
