@@ -194,7 +194,7 @@
         </div>
 
         <div id="msg"></div>
-        <div id="faucet-balance">Faucet Balance: Loading...</div>
+        <div id="faucet-balance">FloofyChain Reserve: Loading...</div>
         
         <!-- Donation Block -->
         <div style="margin-top: 15px; padding: 12px; background-color: #f8f9fa; border-radius: 8px; font-size: 13px; color: #555; text-align: center; border: 1px solid #e9ecef;">
@@ -251,16 +251,19 @@
         window.setInterval(() => { void loadFaucetStatus(); }, 60000);
 
         async function loadBalance() {
+            const display = document.getElementById('faucet-balance');
             try {
-                const res = await fetch('/api/balance');
+                const res = await fetch('/api/reserve-balance', { cache: 'no-store' });
+                if (!res.ok) throw new Error('Reserve unavailable');
                 const data = await res.json();
-                if (data.success) {
-                    document.getElementById('faucet-balance').innerText = `Faucet Balance: ${Number(data.balance).toLocaleString()} FLOOF`;
+                if (data.success && data.balance_type === 'main_reserve' &&
+                    typeof data.balance === 'number' && Number.isFinite(data.balance) && data.balance >= 0) {
+                    display.innerText = `FloofyChain Reserve: ${data.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 })} FLOOF`;
                 } else {
-                    document.getElementById('faucet-balance').innerText = 'Faucet Balance: Offline';
+                    display.innerText = 'FloofyChain Reserve: Offline';
                 }
-            } catch (e) {
-                document.getElementById('faucet-balance').innerText = 'Faucet Balance: Offline';
+            } catch {
+                display.innerText = 'FloofyChain Reserve: Offline';
             }
         }
 
