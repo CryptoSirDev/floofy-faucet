@@ -248,6 +248,11 @@ app.post('/internal/staging/claim-test', async (req, res) => {
 
 app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
+  // Authenticate the ingress before the maintenance gate so even paused
+  // production can reject direct/forged requests without touching payouts.
+  if (!resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET)) {
+    return res.status(403).json({ success: false, message: 'Trusted ingress required.' });
+  }
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED) {
     return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
   }
