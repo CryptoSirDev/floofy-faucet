@@ -140,3 +140,9 @@ RPC or any live payment activity.
 ## State-machine invariant hardening (offline prototype)
 
 The transition guard now **forbids `uncertain → prepared`** outright: an ambiguous payment cannot be re-prepared into a different signed transaction. `uncertain → broadcast` remains a guarded state annotation only, requiring literal `reconciled: true`, a valid recorded TXID and literal `sameRawTransaction: true`; it is not an RPC send authorization. Prepared-state persistence and chain confirmation flags also require literal booleans. Immutable payment identity, recorded TXID and raw bytes must still be enforced by the durable database adapter. This does not replace transaction-to-TXID cryptographic verification, real Core evidence validation, or production SQL constraints.
+
+## November 2026: ambiguous journal COMMIT regression tests
+
+`test/claim-journal-atomic.test.cjs` now exercises an injected database connection loss during `COMMIT`, and a second case where the attempted `ROLLBACK` also fails. These are **mock-only tests**, not evidence of PostgreSQL commit durability. The adapter does not retry the journal insertion or call wallet RPC; on rollback failure it preserves both errors via `AggregateError`. A failed `COMMIT` response is **ambiguous**: the database may have committed despite the error. Before any production integration, callers must query the authoritative journal by `request_id` and reconcile its durable state rather than assuming rollback or issuing another payment.
+
+This change does not touch production schema, Nginx, Render, payout flags, or transaction broadcasting. Payouts remain paused.

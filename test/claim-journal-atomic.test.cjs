@@ -66,3 +66,39 @@ test('rollback failure is reported as an ambiguous state', async () => {
   }) };
   await assert.rejects(journalClaim(pool, identity), AggregateError);
 });
+
+test('ambiguous COMMIT is reported and never retried or broadcast', async () => {
+  const calls = [];
+  const pool = { connect: async () => ({
+    query: async (sql) => {
+      calls.push(sql);
+      if (sql.startsWith('UPDATE') || sql.startsWith('INSERT')) return { rows: [{ request_id }] };
+      if (sql === 'COMMIT') throw Error('connection lost after commit request');
+      return { rows: [] };
+    },
+    release() { calls.push('RELEASE'); }
+  }) };
+  await assert.rejects(journalClaim(pool, identity), /connection lost after commit request/);
+  assert.equal(calls.filter(sql => sql.startsWith('INSERT')).length, 1);
+  assert.equal(calls.filter(sql => sql === 'COMMIT').length, 1);
+  assert.equal(calls.includes('RELEASE'), true);
+  // A COMMIT error does not establish whether the database committed.
+  // The caller must inspect durable state before considering any retry.
+});
+
+test('rollback and original failure are both retained on uncertain COMMIT', async () => {
+  const pool = { connect: async () => ({
+    query: async (sql) => {
+      if (sql.startsWith('UPDATE') || sql.startsWith('INSERT')) return { rows: [{ request_id }] };
+      if (sql === 'COMMIT') throw Error('commit result unknown');
+      if (sql === 'ROLLBACK') throw Error('connection unavailable');
+      return { rows: [] };
+    },
+    release() {}
+  }) };
+  await assert.rejects(journalClaim(pool, identity), err =>
+    err instanceof AggregateError &&
+    err.errors.some(e => /commit result unknown/.test(e.message)) &&
+    err.errors.some(e => /connection unavailable/.test(e.message))
+  );
+});
