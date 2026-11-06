@@ -5,6 +5,25 @@ A community faucet for **FloofyChain (FLOOF)**, developed by [CryptoSirDev](http
 **Website:** https://faucet.floofychain.com/  
 **Source code:** https://github.com/CryptoSirDev/floofy-faucet
 
+## Current deployment and safety status (November 2026)
+
+**Public faucet payouts are paused.** The live Render app is deployed from the `main` branch and the operator has disabled Render Auto-Deploy; publishing new commits requires an intentional manual deployment. The current application also has a code-level `FAUCET_PAUSED = true` gate and a separate `PAYOUT_INTEGRATION_APPROVED = false` interlock. **Changing a Render environment variable alone does not enable payouts.** No code change or passing CI test is authorization to send real FLOOF.
+
+### Trusted claim ingress
+
+- Browser claims are sent to `https://rpc.floofychain.com/api/request` instead of directly to Render. Other public faucet pages and status requests remain on `https://faucet.floofychain.com`.
+- VPS Nginx terminates HTTPS, accepts CORS preflight `OPTIONS`, and proxies claim `POST` requests to the loopback-only Node ingress at `127.0.0.1:3003`.
+- Nginx must trust `CF-Connecting-IP` **only** from verified Cloudflare proxy ranges and overwrite `X-Real-IP`; it must strip client-supplied forwarding and `X-Floofy-Client-*` headers. The ingress must not be exposed directly to the Internet.
+- `scripts/trusted-claim-ingress.cjs` signs the verified client IP, timestamp, HTTP method and path with `TRUSTED_INGRESS_IP_SECRET` before forwarding to the Render claim endpoint.
+- `lib/verified-client-ip.cjs` checks the HMAC-SHA256 signature, IP format, request method/path and a ±30-second timestamp window. The secret must match on the VPS and Render, remain private, and be at least 32 bytes. Do not place it in browser code or logs.
+- **This PR changes `POST /api/request` to verify the signature before returning the paused response.** Once this change is reviewed, merged and manually deployed, an unsigned direct request should return HTTP 403, while a correctly signed request through the VPS should return HTTP 503 while paused. Until then, a 503 response alone does **not** prove signature enforcement.
+
+### Validation and remaining blockers
+
+- Local security tests: `node --test test/verified-client-ip.test.cjs test/trusted-claim-ingress.test.cjs` (six tests passed on the VPS). CI also exercises payout safety and PostgreSQL integration checks; these do not prove end-to-end payout safety.
+- The operator observed HTTP 204 for a browser-style CORS preflight and HTTP 503 maintenance responses through both the VPS and Render. A spoofed `CF-Connecting-IP` test did not appear as the spoofed address in the Nginx access log; this is a useful check, **not** a complete trust-boundary audit.
+- Before any payout activation: review the actual VPS gateway and real-IP trust boundary, validate direct Render rejection after deployment, complete durable payment-journal/recovery integration, exercise end-to-end failure scenarios and obtain explicit operator approval.
+
 ## Overview
 
 The faucet lets visitors request **10 FLOOF** to a FloofyChain address, subject to a **24-hour cooldown per IP address and per wallet address**. It displays the faucet wallet balance and links successful transaction IDs to the FloofyChain explorer.
