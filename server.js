@@ -4,6 +4,7 @@ const path = require('path');
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
 const { createIpDiagnosticHandler } = require('./lib/render-ip-diagnostic.cjs');
+const { resolveVerifiedClientIp } = require('./lib/verified-client-ip.cjs');
 const app = express();
 
 // Ativar trust proxy para obter o IP real do utilizador no Render
@@ -126,7 +127,9 @@ function buildBoundClaimPayload(ip, address) {
 async function reserveBoundClaimFromRender(req, address) {
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED)
     throw new Error('Faucet integration not approved');
-  const payload = buildBoundClaimPayload(req.ip, address);
+  const ip = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET);
+  if (!ip) throw new Error('Verified client IP unavailable');
+  const payload = buildBoundClaimPayload(ip, address);
   return gatewayPost('/internal/claim-reserve', payload);
 }
 
@@ -187,8 +190,10 @@ app.post('/internal/staging/claim-test', async (req, res) => {
     return res.status(400).json({ error: 'Invalid FLOOF address' });
   }
   try {
+    const verifiedIp = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET);
+    if (!verifiedIp) return res.status(503).json({ error: 'Verified client IP unavailable' });
     const payload = renderClaimPayload({
-      ip: req.ip,
+      ip: verifiedIp,
       address,
       secret: GATEWAY_STAGING_CLAIM_SECRET
     });
