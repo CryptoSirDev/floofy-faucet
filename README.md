@@ -5,6 +5,10 @@ A community faucet for **FloofyChain (FLOOF)**, developed by [CryptoSirDev](http
 **Website:** https://faucet.floofychain.com/  
 **Source code:** https://github.com/CryptoSirDev/floofy-faucet
 
+## Release milestone: v2.0.0
+
+Version **2.0.0** marks the trusted claim ingress and signed client-IP architecture, plus updated operational documentation. This is a **security and infrastructure milestone**, not a launch of live payouts: claims remain paused while end-to-end gateway and payout recovery validation continues. The version in `package.json` is reflected in npm startup logs after deployment.
+
 ## Current deployment and safety status (November 2026)
 
 **Public faucet payouts are paused.** The live Render app is deployed from the `main` branch and the operator has disabled Render Auto-Deploy; publishing new commits requires an intentional manual deployment. The current application also has a code-level `FAUCET_PAUSED = true` gate and a separate `PAYOUT_INTEGRATION_APPROVED = false` interlock. **Changing a Render environment variable alone does not enable payouts.** No code change or passing CI test is authorization to send real FLOOF.

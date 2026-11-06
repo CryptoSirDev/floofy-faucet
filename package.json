@@ -1,7 +1,7 @@
 {
   "name": "floofy-faucet",
-  "version": "1.0.0",
-  "description": "Manual Floofy Faucet",
+  "version": "2.0.0",
+  "description": "FloofyChain community faucet with trusted claim ingress and paused payout safety controls",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
