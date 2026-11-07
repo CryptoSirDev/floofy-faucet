@@ -13,7 +13,7 @@ test('queues one durable request without contacting any payment RPC', async () =
     calls.push([path, method, body]);
     return calls.length === 1
       ? { status: 201, data: { allowed: true, request_id: id } }
-      : { status: 202, data: { accepted: true } };
+      : { status: 202, data: { accepted: true, request_id: id, status: 'processing' } };
   } });
   assert.equal(result.status, 'queued');
   assert.equal(result.request_id, id);
@@ -53,7 +53,7 @@ test('does not claim payment succeeded merely because outbox accepted', async ()
     calls++;
     return calls === 1
       ? { status: 201, data: { allowed: true, request_id: id } }
-      : { status: 202, data: { accepted: true } };
+      : { status: 202, data: { accepted: true, request_id: id, status: 'processing' } };
   } });
   assert.equal(result.success, true);
   assert.equal(result.txid, undefined);
@@ -79,4 +79,18 @@ test('gateway error does not consume a reservation', async () => {
   } });
   assert.equal(calls, 1);
   assert.equal(result.code, 'UNAVAILABLE');
+});
+
+test('rejects a gateway acknowledgement for the wrong request ID', async () => {
+  let calls = 0;
+  const result = await submitClaimToGateway({ ...base, request: async () => {
+    calls++;
+    return calls === 1
+      ? { status: 201, data: { allowed: true, request_id: id } }
+      : { status: 202, data: { accepted: true,
+          request_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', status: 'processing' } };
+  } });
+  assert.equal(calls, 2);
+  assert.equal(result.code, 'REVIEW');
+  assert.equal(result.success, false);
 });
