@@ -252,6 +252,23 @@ app.post('/api/request', async (req, res) => {
         message: claim.message
       });
     }
+    // One immediate status read, not polling. A txid is shown only after the
+    // gateway has durably recorded the Core broadcast. A queued claim is NOT paid.
+    try {
+      const status = await gatewayGet(
+        '/internal/claim-status?request_id=' + encodeURIComponent(claim.request_id)
+      );
+      if ((status.payout_status === 'broadcast' || status.payout_status === 'confirmed') &&
+          typeof status.txid === 'string' && /^[a-f0-9]{64}$/i.test(status.txid)) {
+        return res.status(200).json({
+          success: true, request_id: claim.request_id, txid: status.txid,
+          message: status.payout_status === 'confirmed'
+            ? 'Payment confirmed.' : 'Payment sent to the network.'
+        });
+      }
+    } catch {
+      // The claim was already consumed. Do not retry or claim it was paid.
+    }
     return res.status(202).json({
       success: true,
       request_id: claim.request_id,
