@@ -269,6 +269,38 @@
 
         loadBalance();
 
+
+        async function followClaimStatus(requestId) {
+            const msg = document.getElementById('msg');
+            // Bounded polling: no resubmission, no automatic wallet action.
+            for (let attempt = 0; attempt < 12; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                try {
+                    const response = await fetch(
+                        '/api/claim-status?request_id=' + encodeURIComponent(requestId),
+                        { cache: 'no-store' }
+                    );
+                    if (!response.ok) break;
+                    const data = await response.json();
+                    if (data.status === 'sent') {
+                        msg.style.color = 'green';
+                        msg.textContent = data.confirmed ?
+                            'Payment confirmed on chain.' :
+                            'Payment broadcast to the network; awaiting confirmation.';
+                        void loadBalance();
+                        return;
+                    }
+                    if (data.status === 'review') {
+                        msg.style.color = '#aa6e15';
+                        msg.textContent = 'Claim needs review. Please do not submit it again.';
+                        return;
+                    }
+                } catch { break; }
+            }
+            msg.style.color = '#aa6e15';
+            msg.textContent = 'Claim submitted. Payment status is still pending or unavailable. Do not submit again.';
+        }
+
         async function submitClaim() {
             if (faucetPaused) {
                 document.getElementById('msg').style.color = '#aa6e15';
@@ -309,6 +341,9 @@
                 msg.innerText = data.message || data.error ||
                     'Claim could not be completed. Please check the faucet status.';
 
+                if (data.success && data.request_id && !confirmedTxid) {
+                    void followClaimStatus(data.request_id);
+                }
                 if (data.success && confirmedTxid) {
                     const link = document.createElement('a');
                     link.href = 'https://explorer.floofychain.com/tx/' + confirmedTxid;
