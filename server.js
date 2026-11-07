@@ -37,11 +37,11 @@ const GATEWAY_URL = (process.env.GATEWAY_URL || '').replace(/\/$/, '');
 const GATEWAY_API_KEY = process.env.GATEWAY_API_KEY || '';
 const CLAIM_HASH_SECRET = process.env.CLAIM_HASH_SECRET || '';
 const CLAIMS_INTEGRATION_ENABLED = process.env.CLAIMS_INTEGRATION_ENABLED === 'true';
-// Safety interlock: payments remain disabled until HTTPS, wallet and reconciliation tests pass.
-// Two independent interlocks: Render pause and explicit reviewed gateway approval.
-// Keep approval false until the VPS verifies reservation ownership and recovery.
-const PAYOUT_INTEGRATION_APPROVED = false;
-const FAUCET_PAUSED = true;
+// Independent operator-controlled release gates. Both default to safe/off.
+// Never enable until the production gateway's payment journal and reservation
+// ownership have been reviewed and the dedicated faucet wallet is funded.
+const PAYOUT_INTEGRATION_APPROVED = process.env.PAYOUT_INTEGRATION_APPROVED === 'true';
+const FAUCET_PAUSED = process.env.FAUCET_PAUSED !== 'false';
 const MAINTENANCE_MESSAGE =
   'Faucet payouts are temporarily paused while the secure gateway migration is completed. Thank you for your patience! 🐹💙';
 
