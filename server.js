@@ -5,6 +5,7 @@ const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
 const { createIpDiagnosticHandler } = require('./lib/render-ip-diagnostic.cjs');
 const { resolveVerifiedClientIp } = require('./lib/verified-client-ip.cjs');
+const { submitLiveClaim } = require('./lib/submit-live-claim.cjs');
 const app = express();
 
 // Ativar trust proxy para obter o IP real do utilizador no Render
@@ -40,8 +41,8 @@ const CLAIMS_INTEGRATION_ENABLED = process.env.CLAIMS_INTEGRATION_ENABLED === 't
 // Safety interlock: payments remain disabled until HTTPS, wallet and reconciliation tests pass.
 // Two independent interlocks: Render pause and explicit reviewed gateway approval.
 // Keep approval false until the VPS verifies reservation ownership and recovery.
-const PAYOUT_INTEGRATION_APPROVED = false;
-const FAUCET_PAUSED = true;
+const PAYOUT_INTEGRATION_APPROVED = process.env.PAYOUT_INTEGRATION_APPROVED === 'true';
+const FAUCET_PAUSED = process.env.FAUCET_PAUSED !== 'false';
 const MAINTENANCE_MESSAGE =
   'Faucet payouts are temporarily paused while the secure gateway migration is completed. Thank you for your patience! 🐹💙';
 
@@ -75,7 +76,8 @@ app.get('/api/reserve-balance', async (req, res) => {
 
 app.get('/api/status', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ paused: FAUCET_PAUSED, message: FAUCET_PAUSED ? MAINTENANCE_MESSAGE : '' });
+  const paused = FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED;
+  res.json({ paused, message: paused ? MAINTENANCE_MESSAGE : '' });
 });
 
 // Memória temporária para bloqueio em tempo real
@@ -248,51 +250,33 @@ app.post('/internal/staging/claim-test', async (req, res) => {
 
 app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  // Authenticate the ingress before the maintenance gate so even paused
-  // production can reject direct/forged requests without touching payouts.
-  if (!resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET)) {
-    return res.status(403).json({ success: false, message: 'Trusted ingress required.' });
-  }
-  if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED) {
+  const ip = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET);
+  if (!ip) return res.status(403).json({ success: false, message: 'Trusted ingress required.' });
+  if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED)
     return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
-  }
-  // This path stays unreachable while FAUCET_PAUSED is true and the
-  // independently reviewed payout approval is false. Never retry a
-  // reservation or consume after an ambiguous gateway response.
-  if (!PAYOUT_INTEGRATION_APPROVED) {
-    return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
-  }
   const address = req.body?.address;
-  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
+  if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address))
     return res.status(400).json({ success: false, message: 'Invalid FLOOF address.' });
-  }
-  let requestId;
   try {
-    const reserved = await reserveBoundClaimFromRender(req, address);
-    if (reserved.status === 429) {
-      return res.status(429).json({ success: false, message: 'This IP or address has already claimed within 24 hours.' });
-    }
-    if (reserved.status !== 201 || reserved.data?.allowed !== true) {
-      return res.status(503).json({ success: false, message: 'Claim unavailable. Please contact the faucet operator before retrying.' });
-    }
-    requestId = reserved.data.request_id;
-    if (typeof requestId !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
-      throw new Error('Reservation returned invalid request ID');
-    }
-    const consumed = await gatewayPost('/internal/claim-consume', { request_id: requestId });
-    if (consumed.status !== 202 || consumed.data?.accepted !== true) {
-      throw new Error('Reservation not confirmed as consumed');
-    }
-    return res.status(202).json({
-      success: true, request_id: requestId,
-      message: 'Claim accepted. Payment is pending; this is not a transaction confirmation.'
+    const claim = await submitLiveClaim({
+      ip, address, secret: CLAIM_HASH_SECRET,
+      hmac: (secret, value) => createHmac('sha256', secret).update(value).digest('hex'),
+      request: async (endpoint, method, payload) => {
+        if (method !== 'POST') throw new Error('Unsupported gateway method');
+        return gatewayPost(endpoint, payload);
+      }
+    });
+    if (!claim.success) return res.status(claim.code === 'COOLDOWN' ? 429 : 503).json({
+      success: false, request_id: claim.request_id, message: claim.message
+    });
+    return res.status(200).json({
+      success: true, request_id: claim.request_id, txid: claim.txid,
+      message: 'Payment sent to the network.'
     });
   } catch (error) {
-    console.error('Claim state uncertain; do not retry automatically:', error.message);
+    console.error('Claim gateway unavailable; do not retry automatically:', error.message);
     return res.status(503).json({
-      success: false, request_id: requestId || undefined,
-      message: 'Claim status uncertain. Please contact the faucet operator before retrying.'
+      success: false, message: 'Claim state uncertain. Please contact the faucet operator before retrying.'
     });
   }
 });
