@@ -287,6 +287,7 @@
             }
 
             btn.disabled = true;
+            let claimNeedsReview = false;
             msg.style.color = '#333';
             msg.innerText = 'Processing request...';
 
@@ -298,6 +299,8 @@
                 });
                 const data = await response.json();
                 
+                claimNeedsReview = data.success === true ||
+                    data.code === 'REVIEW' || Boolean(data.request_id);
                 const confirmedTxid = typeof data.txid === 'string' &&
                     /^[a-fA-F0-9]{64}$/.test(data.txid) ? data.txid : null;
                 msg.style.color = data.success ? (confirmedTxid ? 'green' : '#aa6e15') : 'red';
@@ -317,9 +320,13 @@
                 }
             } catch (e) {
                 msg.style.color = 'red';
-                msg.innerText = 'Connection error.';
+                msg.innerText = 'Connection error. Please check claim status before trying again.';
+                claimNeedsReview = true;
             } finally {
-                btn.disabled = faucetPaused;
+                // A queued or uncertain claim must not be submitted again by
+                // repeatedly pressing the button. Reloading still consults
+                // the authoritative gateway cooldown, not browser state.
+                btn.disabled = faucetPaused || claimNeedsReview;
             }
         }
     </script>
