@@ -6,6 +6,8 @@ on:
       - 'lib/**'
       - 'gateway/**'
       - 'test/**'
+      - 'scripts/**'
+      - 'package.json'
       - '.github/workflows/faucet-claim-integration.yml'
   push:
     branches:
@@ -14,6 +16,8 @@ on:
       - 'lib/**'
       - 'gateway/**'
       - 'test/**'
+      - 'scripts/**'
+      - 'package.json'
       - '.github/workflows/faucet-claim-integration.yml'
 
 permissions:
@@ -37,4 +41,4 @@ jobs:
           node --check gateway/claim-routes-v2.cjs
           node --check test/gateway-claim-policy.test.cjs
       - name: Run all offline regression tests (no wallets or credentials)
-        run: npm test
+        run: npm run test:all
