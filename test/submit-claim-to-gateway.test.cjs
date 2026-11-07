@@ -94,3 +94,27 @@ test('rejects a gateway acknowledgement for the wrong request ID', async () => {
   assert.equal(result.code, 'REVIEW');
   assert.equal(result.success, false);
 });
+
+test('empty reserve response fails closed without consuming', async () => {
+  let calls = 0;
+  const result = await submitClaimToGateway({ ...base, request: async () => {
+    calls++;
+    return null;
+  } });
+  assert.equal(calls, 1);
+  assert.equal(result.success, false);
+  assert.equal(result.code, 'UNAVAILABLE');
+});
+test('empty consume response retains request ID for manual review', async () => {
+  let calls = 0;
+  const result = await submitClaimToGateway({ ...base, request: async () => {
+    calls++;
+    return calls === 1
+      ? { status: 201, data: { allowed: true, request_id: id } }
+      : null;
+  } });
+  assert.equal(calls, 2);
+  assert.equal(result.success, false);
+  assert.equal(result.code, 'REVIEW');
+  assert.equal(result.request_id, id);
+});
