@@ -300,7 +300,9 @@
                 const data = await response.json();
                 
                 claimNeedsReview = data.success === true ||
-                    data.code === 'REVIEW' || Boolean(data.request_id);
+                    data.code === 'REVIEW' || Boolean(data.request_id) ||
+                    (response.status >= 500 && response.status !== 503 ? true :
+                     response.status === 503 && !data.paused);
                 const confirmedTxid = typeof data.txid === 'string' &&
                     /^[a-fA-F0-9]{64}$/.test(data.txid) ? data.txid : null;
                 msg.style.color = data.success ? (confirmedTxid ? 'green' : '#aa6e15') : 'red';
