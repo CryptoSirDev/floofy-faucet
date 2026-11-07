@@ -30,8 +30,7 @@ function createClaimRoutes({ pool, policy, expectedWalletId, expectedAmountSat }
     async status(requestId) {
       if (typeof requestId !== 'string' || !UUID.test(requestId)) return null;
       const result = await pool.query(`
-        SELECT r.request_id, r.status AS reservation_status, o.status AS payout_status
-          FROM public.faucet_claim_reservations r
+        SELECT r.request_id, r.status AS reservation_status, o.status AS payout_status,\n               CASE WHEN o.status IN ('broadcast','confirmed') THEN o.txid ELSE NULL END AS txid\n          FROM public.faucet_claim_reservations r
           LEFT JOIN public.faucet_payout_outbox o ON o.request_id=r.request_id
          WHERE r.request_id=$1::uuid`, [requestId]);
       if (result.rows.length !== 1) return null;
