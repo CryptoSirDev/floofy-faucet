@@ -3,11 +3,9 @@ name: Faucet claim integration
 on:
   pull_request:
     paths:
-      - 'lib/submit-claim-to-gateway.cjs'
-      - 'test/submit-claim-to-gateway.test.cjs'
-      - 'gateway/server-v2.mjs'
-      - 'gateway/claim-routes-v2.cjs'
-      - 'test/gateway-claim-policy.test.cjs'
+      - 'lib/**'
+      - 'gateway/**'
+      - 'test/**'
       - '.github/workflows/faucet-claim-integration.yml'
   push:
     branches:
@@ -31,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Check syntax
         run: |
           node --check lib/submit-claim-to-gateway.cjs
@@ -41,4 +39,4 @@ jobs:
           node --check gateway/claim-routes-v2.cjs
           node --check test/gateway-claim-policy.test.cjs
       - name: Run offline claim tests (no wallets or credentials)
-        run: node --test test/submit-claim-to-gateway.test.cjs test/gateway-claim-policy.test.cjs
+        run: npm test
