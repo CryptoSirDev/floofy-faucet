@@ -188,7 +188,7 @@ app.post('/internal/staging/claim-test', async (req, res) => {
       request: stagingGatewayRequest
     });
     if (!claim.success) {
-      return res.status(claim.code === 'COOLDOWN' ? 429 :
+      return res.status((claim.code === 'COOLDOWN' || claim.code === 'DAILY_LIMIT') ? 429 :
         claim.code === 'UNAVAILABLE' ? 503 : 502).json({
         ...claim,
         mode: 'staging-no-broadcast'
