@@ -7,6 +7,7 @@ on:
       - 'test/submit-claim-to-gateway.test.cjs'
       - 'gateway/server-v2.mjs'
       - 'gateway/claim-routes-v2.cjs'
+      - 'test/gateway-claim-policy.test.cjs'
       - '.github/workflows/faucet-claim-integration.yml'
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - 'test/submit-claim-to-gateway.test.cjs'
       - 'gateway/server-v2.mjs'
       - 'gateway/claim-routes-v2.cjs'
+      - 'test/gateway-claim-policy.test.cjs'
       - '.github/workflows/faucet-claim-integration.yml'
 
 permissions:
@@ -37,5 +39,6 @@ jobs:
           node --check server.js
           node --check gateway/server-v2.mjs
           node --check gateway/claim-routes-v2.cjs
+          node --check test/gateway-claim-policy.test.cjs
       - name: Run offline claim tests (no wallets or credentials)
-        run: node --test test/submit-claim-to-gateway.test.cjs
+        run: node --test test/submit-claim-to-gateway.test.cjs test/gateway-claim-policy.test.cjs
