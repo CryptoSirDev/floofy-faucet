@@ -216,6 +216,34 @@ app.post('/internal/staging/claim-test', async (req, res) => {
   }
 });
 
+
+// Browser-facing read-only status for an accepted claim. Never return a
+// transaction ID unless the gateway has actually recorded a broadcast.
+// UUIDs are unguessable bearer references; expose only coarse states.
+app.get('/api/claim-status', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const id = req.query.request_id;
+  if (typeof id !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return res.status(400).json({ error: 'Invalid request ID' });
+  }
+  try {
+    const data = await gatewayGet('/internal/claim-status?request_id=' + encodeURIComponent(id));
+    const state = data?.payout_status;
+    // Queued, claimed, prepared and uncertain are NOT completed payments.
+    const paid = state === 'broadcast' || state === 'confirmed';
+    return res.json({
+      request_id: id,
+      status: paid ? 'sent' : state === 'pending' || state === 'claimed' ||
+        state === 'prepared' || state === 'uncertain' || state === 'processing'
+        ? 'processing' : 'review',
+      confirmed: state === 'confirmed'
+    });
+  } catch {
+    return res.status(503).json({ error: 'Payment status unavailable; do not resubmit' });
+  }
+});
+
 app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED) {
