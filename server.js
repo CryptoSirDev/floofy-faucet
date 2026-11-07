@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
+const { requestLiveClaim } = require('./lib/live-claim-flow.cjs');
 const { createIpDiagnosticHandler } = require('./lib/render-ip-diagnostic.cjs');
 const { resolveVerifiedClientIp } = require('./lib/verified-client-ip.cjs');
 const app = express();
@@ -266,32 +267,29 @@ app.post('/api/request', async (req, res) => {
   if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
     return res.status(400).json({ success: false, message: 'Invalid FLOOF address.' });
   }
-  let requestId;
+  // Live VPS contract: reserve (PostgreSQL) -> payment (SQLite/Core) -> TXID.
+  // This branch remains paused until the VPS payment handler checks that the
+  // reservation belongs to the address BEFORE any wallet RPC.
   try {
-    const reserved = await reserveBoundClaimFromRender(req, address);
-    if (reserved.status === 429) {
-      return res.status(429).json({ success: false, message: 'This IP or address has already claimed within 24 hours.' });
+    const ip = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET);
+    if (!ip) return res.status(403).json({ success: false, message: 'Trusted ingress required.' });
+    const result = await requestLiveClaim({
+      ip, address, secret: CLAIM_HASH_SECRET, gatewayPost
+    });
+    if (result.success) {
+      return res.status(200).json({
+        success: true, request_id: result.request_id, txid: result.txid,
+        message: 'Payment sent to the network.'
+      });
     }
-    if (reserved.status !== 201 || reserved.data?.allowed !== true) {
-      return res.status(503).json({ success: false, message: 'Claim unavailable. Please contact the faucet operator before retrying.' });
-    }
-    requestId = reserved.data.request_id;
-    if (typeof requestId !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
-      throw new Error('Reservation returned invalid request ID');
-    }
-    const consumed = await gatewayPost('/internal/claim-consume', { request_id: requestId });
-    if (consumed.status !== 202 || consumed.data?.accepted !== true) {
-      throw new Error('Reservation not confirmed as consumed');
-    }
-    return res.status(202).json({
-      success: true, request_id: requestId,
-      message: 'Claim accepted. Payment is pending; this is not a transaction confirmation.'
+    return res.status(result.code === 'COOLDOWN' ? 429 : 503).json({
+      success: false, request_id: result.request_id,
+      message: result.message
     });
   } catch (error) {
-    console.error('Claim state uncertain; do not retry automatically:', error.message);
+    console.error('Live claim failed; do not retry automatically:', error.message);
     return res.status(503).json({
-      success: false, request_id: requestId || undefined,
+      success: false,
       message: 'Claim status uncertain. Please contact the faucet operator before retrying.'
     });
   }
