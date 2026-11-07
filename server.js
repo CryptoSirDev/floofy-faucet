@@ -75,7 +75,8 @@ app.get('/api/reserve-balance', async (req, res) => {
 
 app.get('/api/status', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ paused: FAUCET_PAUSED, message: FAUCET_PAUSED ? MAINTENANCE_MESSAGE : '' });
+  const paused = FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED;
+  res.json({ paused, message: paused ? MAINTENANCE_MESSAGE : '' });
 });
 
 // Memória temporária para bloqueio em tempo real
