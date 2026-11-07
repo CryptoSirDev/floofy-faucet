@@ -59,3 +59,24 @@ test('does not claim payment succeeded merely because outbox accepted', async ()
   assert.equal(result.txid, undefined);
   assert.match(result.message, /not yet been broadcast/);
 });
+
+test('ambiguous reservation timeout does not attempt consumption or suggest retry', async () => {
+  let calls = 0;
+  const result = await submitClaimToGateway({ ...base, request: async () => {
+    calls++;
+    throw Error('network timeout after possible database commit');
+  } });
+  assert.equal(calls, 1);
+  assert.equal(result.success, false);
+  assert.equal(result.code, 'REVIEW');
+  assert.match(result.message, /before retrying/i);
+});
+test('gateway error does not consume a reservation', async () => {
+  let calls = 0;
+  const result = await submitClaimToGateway({ ...base, request: async () => {
+    calls++;
+    return { status: 503, data: { error: 'unavailable' } };
+  } });
+  assert.equal(calls, 1);
+  assert.equal(result.code, 'UNAVAILABLE');
+});
