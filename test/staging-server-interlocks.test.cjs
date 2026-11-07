@@ -22,8 +22,9 @@ test('Render remains paused and public claim integration is guarded by explicit 
  assert.ok(publicRoute);
  assert.match(publicRoute,/if \(FAUCET_PAUSED \|\| !CLAIMS_INTEGRATION_ENABLED\)/);
  assert.match(publicRoute,/if \(!PAYOUT_INTEGRATION_APPROVED\)/);
- assert.match(publicRoute,/reserveBoundClaimFromRender\(/);
- assert.match(publicRoute,/\/internal\/claim-consume/);
+ assert.match(publicRoute,/requestLiveClaim\(/);
+ assert.match(render,/require\('\.\/lib\/live-claim-flow\.cjs'\)/);
+ assert.match(render,/const \{ requestLiveClaim \}/);
 });
 
 test('staging never connects to live Core or live SQLite journal',()=>{
