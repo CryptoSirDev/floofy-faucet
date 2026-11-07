@@ -19,7 +19,7 @@ test('missing broadcast RPC blocks processing before acquiring a lease', async (
   const db = { query: async () => { queries++; throw Error('unexpected query'); } };
   await assert.rejects(processClaimedPayout({
     db, requestId, owner: 'worker_1', signer: async () => {},
-    decode: async () => {}, expectedWalletId: 'faucet-core', rpcUrl: 'http://127.0.0.1:6664/', allowPreparation: true, allowBroadcast: true
+    decode: async () => {}, expectedWalletId: 'faucet-core', expectedAmountSat: 1000000000, rpcUrl: 'http://127.0.0.1:6664/', allowPreparation: true, allowBroadcast: true
   }), /Trusted Core/);
   assert.equal(queries, 0);
 });
@@ -29,7 +29,7 @@ test('missing signer blocks processing before acquiring a lease', async () => {
   const db = { query: async () => { queries++; throw Error('unexpected query'); } };
   await assert.rejects(processClaimedPayout({
     db, requestId, owner: 'worker_1', decode: async () => {},
-    expectedWalletId: 'faucet-core', rpcUrl: 'http://127.0.0.1:6664/', allowPreparation: true
+    expectedWalletId: 'faucet-core', expectedAmountSat: 1000000000, rpcUrl: 'http://127.0.0.1:6664/', allowPreparation: true
   }), /Audited signer/);
   assert.equal(queries, 0);
 });
@@ -41,7 +41,7 @@ test('unavailable lease does not sign or broadcast', async () => {
   const result = await processClaimedPayout({
     db, requestId, owner: 'worker_1',
     signer: async () => { signatures++; throw Error('must not sign'); },
-    decode: async () => {}, expectedWalletId: 'faucet-core', rpcUrl: 'http://127.0.0.1:6664/', allowPreparation: true
+    decode: async () => {}, expectedWalletId: 'faucet-core', expectedAmountSat: 1000000000, rpcUrl: 'http://127.0.0.1:6664/', allowPreparation: true
   });
   assert.deepEqual(result, { status: 'not-claimed', request_id: requestId });
   assert.equal(queries, 1);
@@ -63,10 +63,21 @@ test('worker rejects reserve Core RPC port before leasing or signing', async () 
   const db = { query: async () => { queries++; throw Error('unexpected'); } };
   await assert.rejects(processClaimedPayout({
     db, requestId, owner: 'worker_1',
-    expectedWalletId: 'faucet-core', rpcUrl: 'http://127.0.0.1:6662/',
+    expectedWalletId: 'faucet-core', expectedAmountSat: 1000000000, rpcUrl: 'http://127.0.0.1:6662/',
     signer: async () => { signed++; }, decode: async () => {},
     allowPreparation: true
   }), /Refusing RPC endpoint/);
   assert.equal(queries, 0);
   assert.equal(signed, 0);
+});
+
+test('worker refuses missing verified payout amount before leasing', async () => {
+  let queries = 0;
+  const db = { query: async () => { queries++; throw Error('unexpected'); } };
+  await assert.rejects(processClaimedPayout({
+    db, requestId, owner: 'worker_1', expectedWalletId: 'faucet-core',
+    rpcUrl: 'http://127.0.0.1:6664/',
+    signer: async () => {}, decode: async () => {}, allowPreparation: true
+  }), /verified faucet payout amount/);
+  assert.equal(queries, 0);
 });
