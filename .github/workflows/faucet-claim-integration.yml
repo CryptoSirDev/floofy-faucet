@@ -11,11 +11,9 @@ on:
     branches:
       - feature/recoverable-claims
     paths:
-      - 'lib/submit-claim-to-gateway.cjs'
-      - 'test/submit-claim-to-gateway.test.cjs'
-      - 'gateway/server-v2.mjs'
-      - 'gateway/claim-routes-v2.cjs'
-      - 'test/gateway-claim-policy.test.cjs'
+      - 'lib/**'
+      - 'gateway/**'
+      - 'test/**'
       - '.github/workflows/faucet-claim-integration.yml'
 
 permissions:
@@ -38,5 +36,5 @@ jobs:
           node --check gateway/server-v2.mjs
           node --check gateway/claim-routes-v2.cjs
           node --check test/gateway-claim-policy.test.cjs
-      - name: Run offline claim tests (no wallets or credentials)
+      - name: Run all offline regression tests (no wallets or credentials)
         run: npm test
