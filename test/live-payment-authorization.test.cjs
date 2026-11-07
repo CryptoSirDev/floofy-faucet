@@ -8,6 +8,7 @@ const address='F6V4vropSApb2sPj8p3JQhYXdCgpeucuYv';
 test('existing reservation authorizes only its bound 10 FLOOF destination', async () => {
   const pool={async query(sql,params) {
     assert.match(sql,/address_hash=\$2/);
+    assert.match(sql,/status='reserved'/);
     assert.match(sql,/created_at > now\(\)-interval '24 hours'/);
     assert.deepEqual(params,[id,createHash('sha256').update(address).digest('hex')]);
     return {rows:[{request_id:id}]};
