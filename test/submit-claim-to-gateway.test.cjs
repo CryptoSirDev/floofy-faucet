@@ -78,7 +78,7 @@ test('gateway error does not consume a reservation', async () => {
     return { status: 503, data: { error: 'unavailable' } };
   } });
   assert.equal(calls, 1);
-  assert.equal(result.code, 'UNAVAILABLE');
+  assert.equal(result.code, 'REVIEW');
 });
 
 test('rejects a gateway acknowledgement for the wrong request ID', async () => {
@@ -103,7 +103,7 @@ test('empty reserve response fails closed without consuming', async () => {
   } });
   assert.equal(calls, 1);
   assert.equal(result.success, false);
-  assert.equal(result.code, 'UNAVAILABLE');
+  assert.equal(result.code, 'REVIEW');
 });
 test('empty consume response retains request ID for manual review', async () => {
   let calls = 0;
@@ -117,4 +117,16 @@ test('empty consume response retains request ID for manual review', async () => 
   assert.equal(result.success, false);
   assert.equal(result.code, 'REVIEW');
   assert.equal(result.request_id, id);
+});
+
+test('HTTP 500 after possible reservation commit must not encourage retry', async () => {
+  let calls = 0;
+  const result = await submitClaimToGateway({ ...base, request: async () => {
+    calls++;
+    return { status: 500, data: { error: 'database commit response lost' } };
+  } });
+  assert.equal(calls, 1);
+  assert.equal(result.success, false);
+  assert.equal(result.code, 'REVIEW');
+  assert.match(result.message, /before retrying/i);
 });
