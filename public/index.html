@@ -298,14 +298,22 @@
                 });
                 const data = await response.json();
                 
-                msg.style.color = data.success ? 'green' : 'red';
+                const confirmedTxid = typeof data.txid === 'string' &&
+                    /^[a-fA-F0-9]{64}$/.test(data.txid) ? data.txid : null;
+                msg.style.color = data.success ? (confirmedTxid ? 'green' : '#aa6e15') : 'red';
+                msg.innerText = data.message || data.error ||
+                    'Claim could not be completed. Please check the faucet status.';
 
-                if (data.success && data.txid) {
-                    const explorerUrl = `https://explorer.floofychain.com/tx/${data.txid}`;
-                    msg.innerHTML = `${data.message} <br><a href="${explorerUrl}" target="_blank" rel="noopener noreferrer" style="color: #28a745; text-decoration: underline; font-weight: bold;">TXID: ${data.txid.substring(0, 12)}...</a>`;
+                if (data.success && confirmedTxid) {
+                    const link = document.createElement('a');
+                    link.href = 'https://explorer.floofychain.com/tx/' + confirmedTxid;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.style.cssText = 'color:#28a745;text-decoration:underline;font-weight:bold;';
+                    link.textContent = 'TXID: ' + confirmedTxid.substring(0, 12) + '...';
+                    msg.appendChild(document.createTextNode(' '));
+                    msg.appendChild(link);
                     loadBalance();
-                } else {
-                    msg.innerText = data.message || data.error || 'Claim could not be completed. Please check the faucet status.';
                 }
             } catch (e) {
                 msg.style.color = 'red';
