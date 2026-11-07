@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.cjs"
+    "test": "node --test test/*.test.cjs",
+    "test:all": "node scripts/preflight-offline.cjs"
   },
   "dependencies": {
     "express": "^4.19.2",
