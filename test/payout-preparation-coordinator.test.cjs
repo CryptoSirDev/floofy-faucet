@@ -16,7 +16,7 @@ test('a payout from a different wallet never reaches the signer', async () => {
   } };
   await assert.rejects(prepareLeasedPayout({
     db, requestId, owner: 'worker_1', epoch: 1,
-    expectedWalletId: 'faucet-core',
+    expectedWalletId: 'faucet-core', expectedAmountSat: 1000000000,
     signer: async () => { signed++; throw Error('must never sign'); },
     inspect: async () => { throw Error('must never decode'); }
   }), /dedicated worker wallet/);
@@ -32,4 +32,21 @@ test('preparation refuses missing expected wallet without accessing storage', as
     signer: async () => {}, inspect: async () => {}
   }), /Invalid payout preparation dependencies/);
   assert.equal(queried, 0);
+});
+
+test('a modified outbox payout amount never reaches the signer', async () => {
+  let signed = 0;
+  const db = { async query() {
+    return { rows: [{
+      request_id: requestId, address: 'F' + 'A'.repeat(33),
+      amount_sat: '2000000000', wallet_id: 'faucet-core'
+    }] };
+  } };
+  await assert.rejects(prepareLeasedPayout({
+    db, requestId, owner: 'worker_1', epoch: 1,
+    expectedWalletId: 'faucet-core', expectedAmountSat: 1000000000,
+    signer: async () => { signed++; throw Error('must never sign'); },
+    inspect: async () => { throw Error('must never decode'); }
+  }), /fixed faucet policy/);
+  assert.equal(signed, 0);
 });
