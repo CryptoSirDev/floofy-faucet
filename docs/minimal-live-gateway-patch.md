@@ -3,13 +3,13 @@
 Source: operator-provided `/opt/floofy-rpc-gateway/server.js`, 2026-11-07.
 
 The VPS has PostgreSQL `claim-store.cjs` and an existing SQLite `payout_v2`
-journal. **The PostgreSQL pool export is NOT YET VERIFIED.** **Do not replace the gateway.**
+journal. **The PostgreSQL pool export was verified from operator output:** `module.exports={pool,reserve,hash}`. **Do not replace the gateway.**
 
 ## Change 1: add imports near createRequire
 
 ```js
 import { createHash } from 'node:crypto';
-// Only after verifying claim-store.cjs actually exports `pool`:
+// Existing verified CommonJS export:
 const { pool } = require('./claim-store.cjs');
 ```
 
@@ -43,7 +43,8 @@ SQLite journal and ensure the authenticated payment endpoint is reachable only
 by the trusted Render backend; a party with the gateway API key must not be able
 to fabricate a new reservation. Verified PostgreSQL schema on 2026-11-07: request_id UUID, address_hash TEXT,
 created_at TIMESTAMPTZ, status TEXT with reserved/processing/sent/uncertain/failed.
-**Still verify claim-store.cjs exports and DB permissions.** Keep payments disabled during staging.
+Verified `claim-store.cjs` exports `pool`, `reserve`, `hash` (2026-11-07).
+DB permissions and actual route behavior still require validation. Keep payments disabled during staging.
 
 The existing SQLite idempotency and the existing `sendtoaddress` call stay unchanged.
 No new endpoints, migrations, wallet or service required.
