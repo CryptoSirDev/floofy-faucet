@@ -62,7 +62,7 @@ test('atomic journal: one winner under concurrent PostgreSQL requests', {
       await assert.rejects(journalClaim(pool, { ...identity, request_id: id }), /Reservation unavailable/);
       assert.equal((await pool.query('SELECT status FROM public.faucet_claim_reservations WHERE request_id=$1', [id])).rows[0].status, 'reserved');
     }
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM public.faucet_payment_intents')).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM public.faucet_payment_intents WHERE request_id=$1', [request_id])).rows[0].n, 1);
 
   } finally {
     try {
