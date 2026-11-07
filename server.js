@@ -4,6 +4,7 @@ const path = require('path');
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
 const { submitClaimToGateway } = require('./lib/submit-claim-to-gateway.cjs');
+const { submitLiveClaim } = require('./lib/submit-live-claim.cjs');
 const app = express();
 
 // Ativar trust proxy para obter o IP real do utilizador no Render
@@ -233,46 +234,26 @@ app.post('/api/request', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid FLOOF address.' });
   }
   try {
-    const claim = await submitClaimToGateway({
+    const claim = await submitLiveClaim({
       ip: req.ip,
       address,
       secret: CLAIM_HASH_SECRET,
-      renderClaimPayload,
+      hmac: (secret, value) => createHmac('sha256', secret).update(value).digest('hex'),
       request: async (endpoint, method, payload) => {
         if (method !== 'POST') throw new Error('Unsupported gateway method');
         return gatewayPost(endpoint, payload);
       }
     });
     if (!claim.success) {
-      const status = claim.code === 'COOLDOWN' ? 429 :
-        claim.code === 'UNAVAILABLE' ? 503 : 502;
-      return res.status(status).json({
+      return res.status(claim.code === 'COOLDOWN' ? 429 : 503).json({
         success: false,
         request_id: claim.request_id,
         message: claim.message
       });
     }
-    // One immediate status read, not polling. A txid is shown only after the
-    // gateway has durably recorded the Core broadcast. A queued claim is NOT paid.
-    try {
-      const status = await gatewayGet(
-        '/internal/claim-status?request_id=' + encodeURIComponent(claim.request_id)
-      );
-      if ((status.payout_status === 'broadcast' || status.payout_status === 'confirmed') &&
-          typeof status.txid === 'string' && /^[a-f0-9]{64}$/i.test(status.txid)) {
-        return res.status(200).json({
-          success: true, request_id: claim.request_id, txid: status.txid,
-          message: status.payout_status === 'confirmed'
-            ? 'Payment confirmed.' : 'Payment sent to the network.'
-        });
-      }
-    } catch {
-      // The claim was already consumed. Do not retry or claim it was paid.
-    }
-    return res.status(202).json({
-      success: true,
-      request_id: claim.request_id,
-      message: 'Claim accepted. Payment is pending; this is not a transaction confirmation.'
+    return res.status(200).json({
+      success: true, request_id: claim.request_id, txid: claim.txid,
+      message: 'Payment sent to the network.'
     });
   } catch (error) {
     console.error('Claim gateway unavailable; do not retry automatically:', error.message);
