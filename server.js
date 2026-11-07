@@ -231,33 +231,36 @@ app.post('/api/request', async (req, res) => {
   if (typeof address !== 'string' || !/^F[1-9A-HJ-NP-Za-km-z]{20,80}$/.test(address)) {
     return res.status(400).json({ success: false, message: 'Invalid FLOOF address.' });
   }
-  let requestId;
   try {
-    const reserved = await reserveBoundClaimFromRender(req, address);
-    if (reserved.status === 429) {
-      return res.status(429).json({ success: false, message: 'This IP or address has already claimed within 24 hours.' });
-    }
-    if (reserved.status !== 201 || reserved.data?.allowed !== true) {
-      return res.status(503).json({ success: false, message: 'Claim unavailable. Please contact the faucet operator before retrying.' });
-    }
-    requestId = reserved.data.request_id;
-    if (typeof requestId !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
-      throw new Error('Reservation returned invalid request ID');
-    }
-    const consumed = await gatewayPost('/internal/claim-consume', { request_id: requestId });
-    if (consumed.status !== 202 || consumed.data?.accepted !== true) {
-      throw new Error('Reservation not confirmed as consumed');
+    const claim = await submitClaimToGateway({
+      ip: req.ip,
+      address,
+      secret: CLAIM_HASH_SECRET,
+      renderClaimPayload,
+      request: async (endpoint, method, payload) => {
+        if (method !== 'POST') throw new Error('Unsupported gateway method');
+        return gatewayPost(endpoint, payload);
+      }
+    });
+    if (!claim.success) {
+      const status = claim.code === 'COOLDOWN' ? 429 :
+        claim.code === 'UNAVAILABLE' ? 503 : 502;
+      return res.status(status).json({
+        success: false,
+        request_id: claim.request_id,
+        message: claim.message
+      });
     }
     return res.status(202).json({
-      success: true, request_id: requestId,
+      success: true,
+      request_id: claim.request_id,
       message: 'Claim accepted. Payment is pending; this is not a transaction confirmation.'
     });
   } catch (error) {
-    console.error('Claim state uncertain; do not retry automatically:', error.message);
+    console.error('Claim gateway unavailable; do not retry automatically:', error.message);
     return res.status(503).json({
-      success: false, request_id: requestId || undefined,
-      message: 'Claim status uncertain. Please contact the faucet operator before retrying.'
+      success: false,
+      message: 'Claim state uncertain. Please contact the faucet operator before retrying.'
     });
   }
 });
