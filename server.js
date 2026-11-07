@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
+const { submitClaimToGateway } = require('./lib/submit-claim-to-gateway.cjs');
 const app = express();
 
 // Ativar trust proxy para obter o IP real do utilizador no Render
@@ -179,51 +180,33 @@ app.post('/internal/staging/claim-test', async (req, res) => {
     return res.status(400).json({ error: 'Invalid FLOOF address' });
   }
   try {
-    const payload = renderClaimPayload({
+    const claim = await submitClaimToGateway({
       ip: req.ip,
       address,
-      secret: GATEWAY_STAGING_CLAIM_SECRET
+      secret: GATEWAY_STAGING_CLAIM_SECRET,
+      renderClaimPayload,
+      request: stagingGatewayRequest
     });
-    const reservation = await stagingGatewayRequest('/internal/claim-reserve', 'POST', payload);
-    if (reservation.status !== 201) {
-      return res.status(reservation.status === 429 ? 429 : 502).json({
-        stage: 'reserve',
-        gateway_status: reservation.status,
-        result: reservation.data
+    if (!claim.success) {
+      return res.status(claim.code === 'COOLDOWN' ? 429 :
+        claim.code === 'UNAVAILABLE' ? 503 : 502).json({
+        ...claim,
+        mode: 'staging-no-broadcast'
       });
     }
-    const requestId = reservation.data?.request_id;
-    if (typeof requestId !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
-      return res.status(502).json({ stage: 'reserve', error: 'Invalid reservation response; reconcile staging' });
-    }
-
-    const consumed = await stagingGatewayRequest('/internal/claim-consume', 'POST', { request_id: requestId });
-    if (consumed.status !== 202) {
-      return res.status(502).json({
-        stage: 'consume',
-        request_id: requestId,
-        gateway_status: consumed.status,
-        result: consumed.data,
-        instruction: 'Inspect claim status before any manual retry'
-      });
-    }
-
     const status = await stagingGatewayRequest(
-      '/internal/claim-status?request_id=' + encodeURIComponent(requestId), 'GET'
+      '/internal/claim-status?request_id=' + encodeURIComponent(claim.request_id), 'GET'
     );
     if (status.status !== 200) {
       return res.status(502).json({
-        stage: 'status',
-        request_id: requestId,
-        gateway_status: status.status,
-        instruction: 'Reservation was consumed; inspect staging PostgreSQL before retry'
+        success: false,
+        request_id: claim.request_id,
+        message: 'Claim queued; status unavailable. Inspect before retry.'
       });
     }
     return res.status(200).json({
-      success: true,
+      ...claim,
       mode: 'staging-no-broadcast',
-      request_id: requestId,
       reservation_status: status.data.reservation_status,
       payout_status: status.data.payout_status
     });
