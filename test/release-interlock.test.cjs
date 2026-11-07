@@ -27,8 +27,8 @@ test('request route only reaches reservation gateway after both hardcoded safety
   assert.match(route, /if\s*\(FAUCET_PAUSED\s*\|\|\s*!CLAIMS_INTEGRATION_ENABLED\)/);
   assert.match(route, /if\s*\(!PAYOUT_INTEGRATION_APPROVED\)/);
   assert.match(server, /const\s+PAYOUT_INTEGRATION_APPROVED\s*=\s*false\s*;/);
-  assert.match(route, /reserveBoundClaimFromRender\s*\(/);
-  assert.match(route, /gatewayPost\s*\('\/internal\/claim-consume'/);
+  assert.match(route, /requestLiveClaim\s*\(/);
+  assert.match(server, /require\('\.\/lib\/live-claim-flow\.cjs'\)/);
   assert.doesNotMatch(route, /gatewayPost\s*\('\/internal\/payment'/);
 });
 
