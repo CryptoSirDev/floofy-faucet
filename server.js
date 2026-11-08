@@ -250,8 +250,9 @@ app.post('/internal/staging/claim-test', async (req, res) => {
 
 app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  const ip = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET)
-    || (process.env.RENDER_DIRECT_IP_APPROVED === 'true' && require('node:net').isIP(req.ip) ? req.ip : null);
+  // Only accept an IP authenticated by the trusted ingress signer.
+  // Express req.ip can be influenced by client-supplied forwarding headers.
+  const ip = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET);
   if (!ip) return res.status(403).json({ success: false, message: 'Verified client IP unavailable.' });
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED)
     return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
