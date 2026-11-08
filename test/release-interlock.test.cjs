@@ -35,3 +35,13 @@ test('Render source contains no direct Core RPC send calls', () => {
   assert.doesNotMatch(server, /\bsendtoaddress\b/);
   assert.doesNotMatch(server, /\bsendrawtransaction\b/);
 });
+
+test('public payout route never trusts spoofable Express proxy IP', () => {
+  const start = server.indexOf("app.post('/api/request'");
+  const end = server.indexOf('\n});', start);
+  assert.ok(start >= 0 && end > start);
+  const route = server.slice(start, end);
+  assert.match(route, /resolveVerifiedClientIp\(req, process\.env\.TRUSTED_INGRESS_IP_SECRET\)/);
+  const executableRoute = route.split('\n').filter(line => !/^\s*\/\//.test(line)).join('\n');
+  assert.doesNotMatch(executableRoute, /req\.ip|x-forwarded-for|RENDER_DIRECT_IP_APPROVED/i);
+});
