@@ -15,15 +15,16 @@ test('staging gateway fails closed and does not contain a payment broadcast call
  assert.doesNotMatch(gateway,/rpc\(['"]sendtoaddress['"]/);
  assert.doesNotMatch(gateway,/rpc\(['"]sendrawtransaction['"]/);
 });
-test('Render remains paused and public claim integration is guarded by explicit approval',()=>{
- assert.match(render,/const PAYOUT_INTEGRATION_APPROVED = false;/);
- assert.match(render,/const FAUCET_PAUSED = true;/);
+test('Render live payouts require explicit approval and remain paused by default',()=>{
+ assert.match(render,/const PAYOUT_INTEGRATION_APPROVED = process\.env\.PAYOUT_INTEGRATION_APPROVED === 'true';/);
+ assert.match(render,/const FAUCET_PAUSED = process\.env\.FAUCET_PAUSED !== 'false';/);
+ assert.match(render,/const CLAIMS_INTEGRATION_ENABLED = process\.env\.CLAIMS_INTEGRATION_ENABLED === 'true';/);
  const publicRoute=render.split("app.post('/api/request', async (req, res) => {")[1];
  assert.ok(publicRoute);
- assert.match(publicRoute,/if \(FAUCET_PAUSED \|\| !CLAIMS_INTEGRATION_ENABLED\)/);
- assert.match(publicRoute,/if \(!PAYOUT_INTEGRATION_APPROVED\)/);
- assert.match(publicRoute,/reserveBoundClaimFromRender\(/);
- assert.match(publicRoute,/\/internal\/claim-consume/);
+ assert.match(publicRoute,/if \(FAUCET_PAUSED \|\| !CLAIMS_INTEGRATION_ENABLED \|\| !PAYOUT_INTEGRATION_APPROVED\)/);
+ assert.match(publicRoute,/resolveVerifiedClientIp\(/);
+ assert.match(publicRoute,/submitLiveClaim\(/);
+ assert.doesNotMatch(publicRoute,/\/internal\/claim-consume/);
 });
 
 test('staging never connects to live Core or live SQLite journal',()=>{

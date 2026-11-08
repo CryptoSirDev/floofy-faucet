@@ -183,7 +183,7 @@
         </div>
         <div id="maintenance-banner" class="maintenance-banner" role="status" aria-live="polite">
             <strong>🐹 FloofyChain Faucet — Temporarily Unavailable</strong>
-            ⚠️ The FloofyChain network is undergoing its v4 upgrade. Faucet payouts are temporarily paused until the new network is fully synchronized.
+            ⚠️ Faucet payouts are temporarily paused while the secure payment gateway is being prepared.
             <div style="margin-top: 8px;">Thank you for your patience! 💙</div>
         </div>
         <p>Submit your address to receive 10 FLOOF (1 claim per IP / 24h).</p>
@@ -291,7 +291,7 @@
             msg.innerText = 'Processing request...';
 
             try {
-                const response = await fetch('https://rpc.floofychain.com/api/request', {
+                const response = await fetch('/api/request', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ address })
