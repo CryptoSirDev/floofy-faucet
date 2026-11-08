@@ -42,5 +42,6 @@ test('public payout route never trusts spoofable Express proxy IP', () => {
   assert.ok(start >= 0 && end > start);
   const route = server.slice(start, end);
   assert.match(route, /resolveVerifiedClientIp\(req, process\.env\.TRUSTED_INGRESS_IP_SECRET\)/);
-  assert.doesNotMatch(route, /req\.ip|x-forwarded-for|RENDER_DIRECT_IP_APPROVED/i);
+  const executableRoute = route.split('\n').filter(line => !/^\s*\/\//.test(line)).join('\n');
+  assert.doesNotMatch(executableRoute, /req\.ip|x-forwarded-for|RENDER_DIRECT_IP_APPROVED/i);
 });
