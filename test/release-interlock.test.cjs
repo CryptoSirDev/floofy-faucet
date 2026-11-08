@@ -9,27 +9,21 @@ const path = require('node:path');
 
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
-test('Render faucet has a hardcoded pause interlock', () => {
-  assert.match(server, /const\s+FAUCET_PAUSED\s*=\s*true\s*;/);
+test('Render payout gates are off unless explicitly enabled', () => {
+  assert.match(server, /const\s+FAUCET_PAUSED\s*=\s*process\.env\.FAUCET_PAUSED !== 'false'/);
+  assert.match(server, /const\s+PAYOUT_INTEGRATION_APPROVED\s*=\s*process\.env\.PAYOUT_INTEGRATION_APPROVED === 'true'/);
+  assert.match(server, /const\s+CLAIMS_INTEGRATION_ENABLED\s*=\s*process\.env\.CLAIMS_INTEGRATION_ENABLED === 'true'/);
 });
 
-test('request route refuses claims when paused or integration is disabled', () => {
-  assert.match(server, /if\s*\(FAUCET_PAUSED\s*\|\|\s*!CLAIMS_INTEGRATION_ENABLED\)/);
-  assert.match(server, /res\.status\(503\)/);
-});
-
-test('request route only reaches reservation gateway after both hardcoded safety interlocks', () => {
-  const routeStart = server.indexOf("app.post('/api/request'");
-  assert.ok(routeStart !== -1, 'request endpoint must exist');
-  const routeEnd = server.indexOf('\n});', routeStart);
-  assert.ok(routeEnd > routeStart, 'request endpoint must have a closing block');
-  const route = server.slice(routeStart, routeEnd);
-  assert.match(route, /if\s*\(FAUCET_PAUSED\s*\|\|\s*!CLAIMS_INTEGRATION_ENABLED\)/);
-  assert.match(route, /if\s*\(!PAYOUT_INTEGRATION_APPROVED\)/);
-  assert.match(server, /const\s+PAYOUT_INTEGRATION_APPROVED\s*=\s*false\s*;/);
-  assert.match(route, /reserveBoundClaimFromRender\s*\(/);
-  assert.match(route, /gatewayPost\s*\('\/internal\/claim-consume'/);
-  assert.doesNotMatch(route, /gatewayPost\s*\('\/internal\/payment'/);
+test('public route checks all three gates before submitting to the gateway', () => {
+  const start = server.indexOf("app.post('/api/request'");
+  const end = server.indexOf('\n});', start);
+  assert.ok(start >= 0 && end > start);
+  const route = server.slice(start, end);
+  assert.match(route, /if\s*\(FAUCET_PAUSED\s*\|\|\s*!CLAIMS_INTEGRATION_ENABLED\s*\|\|\s*!PAYOUT_INTEGRATION_APPROVED\)/);
+  assert.match(route, /return res\.status\(503\)/);
+  assert.match(route, /submitLiveClaim\s*\(/);
+  assert.doesNotMatch(route, /\/internal\/claim-consume/);
 });
 
 test('gateway client requires HTTPS and API key', () => {
