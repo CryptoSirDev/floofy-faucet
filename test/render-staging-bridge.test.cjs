@@ -20,11 +20,12 @@ test('Render staging test route uses independent staging credentials and never p
   assert.doesNotMatch(route, /GATEWAY_URL|GATEWAY_API_KEY|sendtoaddress|sendrawtransaction/);
 });
 
-test('public faucet request remains hard-paused and payout approval remains false', () => {
-  assert.match(source, /const PAYOUT_INTEGRATION_APPROVED = false;/);
-  assert.match(source, /const FAUCET_PAUSED = true;/);
+test('public faucet stays default-paused and uses live adapter only behind gates', () => {
+  assert.match(source, /const PAYOUT_INTEGRATION_APPROVED = process\.env\.PAYOUT_INTEGRATION_APPROVED === 'true';/);
+  assert.match(source, /const FAUCET_PAUSED = process\.env\.FAUCET_PAUSED !== 'false';/);
   const publicRoute = source.split("app.post('/api/request'")[1];
   assert.ok(publicRoute);
   assert.match(publicRoute, /return res\.status\(503\)/);
-  assert.doesNotMatch(publicRoute, /stagingGatewayRequest|\/internal\/claim-reserve/);
+  assert.match(publicRoute, /submitLiveClaim\(/);
+  assert.doesNotMatch(publicRoute, /stagingGatewayRequest|\/internal\/claim-consume/);
 });
