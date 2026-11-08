@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHmac } = require('node:crypto');
-const { resolveVerifiedClientIp } = require('../lib/verified-client-ip.cjs');
+const { resolveVerifiedClientIp, resolveCloudflareClientIp } = require('../lib/verified-client-ip.cjs');
 const secret = 'x'.repeat(48);
 const now = 1794000000000;
 function request(ip, time = now, method = 'POST', url = '/internal/staging/claim-test') {
@@ -35,4 +35,13 @@ test('rejects invalid IPs, mismatched path and method', () => {
   req.originalUrl = '/internal/staging/claim-test';
   req.method = 'GET';
   assert.equal(resolveVerifiedClientIp(req, secret, now), null);
+});
+
+test('Cloudflare header is rejected unless edge is independently approved', () => {
+  const req = { get: name => name === 'cf-connecting-ip' ? '203.0.113.10' : undefined };
+  assert.equal(resolveCloudflareClientIp(req, false), null);
+  assert.equal(resolveCloudflareClientIp(req, undefined), null);
+  assert.equal(resolveCloudflareClientIp(req, true), '203.0.113.10');
+  const forged = { get: () => 'not-an-ip' };
+  assert.equal(resolveCloudflareClientIp(forged, true), null);
 });
