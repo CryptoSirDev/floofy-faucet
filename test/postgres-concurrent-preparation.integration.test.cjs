@@ -38,12 +38,17 @@ if (process.env.RUN_PG_INTEGRATION !== '1') {
       // A owns the row lock. B must wait, then its trigger must see A's committed values.
       await b.query('BEGIN'); inB = true;
       await b.query("SET LOCAL lock_timeout = '5s'");
-      const competing = b.query(`UPDATE faucet_payout_outbox SET txid=$2,raw_tx=$3,status='prepared'
-        WHERE request_id=$1`, [id, 'b'.repeat(64), 'signed_B']);
+      // Attach the rejection handler immediately: PostgreSQL may reject before
+      // assert.rejects is reached, otherwise Node treats it as unhandled.
+      const competing = assert.rejects(
+        b.query(`UPDATE faucet_payout_outbox SET txid=$2,raw_tx=$3,status='prepared'
+          WHERE request_id=$1`, [id, 'b'.repeat(64), 'signed_B']),
+        /recorded payout txid cannot change/
+      );
       // Yield to ensure competing query has been issued before committing A.
       await new Promise(resolve => setImmediate(resolve));
       await a.query('COMMIT'); inA = false;
-      await assert.rejects(competing, /recorded payout txid cannot change/);
+      await competing;
       await b.query('ROLLBACK'); inB = false;
 
       const row = (await pool.query(

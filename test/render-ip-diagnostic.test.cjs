@@ -7,7 +7,7 @@ const { createIpDiagnosticHandler } = require('../lib/render-ip-diagnostic.cjs')
 const token = 'test-token-' + 'a'.repeat(40);
 const secret = 'test-secret-' + 'b'.repeat(40);
 
-function invoke(ip, providedToken) {
+function invoke(ip, providedToken, edgeIp) {
   const headers = {};
   let status = 200;
   let body;
@@ -15,7 +15,8 @@ function invoke(ip, providedToken) {
   const req = {
     ip,
     get(name) {
-      return name === 'x-staging-test-token' ? providedToken : undefined;
+      return name === 'x-staging-test-token' ? providedToken :
+        name === 'cf-connecting-ip' ? edgeIp : undefined;
     }
   };
 
@@ -73,4 +74,14 @@ test('missing secret fails closed', () => {
 
   createIpDiagnosticHandler({ token, secret: '' })(req, res);
   assert.equal(status, 503);
+});
+
+test('edge fingerprint is independent of spoofed Express IP and never leaks raw IP', () => {
+  const a = invoke('8.8.8.8', token, '203.0.113.10');
+  const b = invoke('9.9.9.9', token, '203.0.113.10');
+  assert.notEqual(a.body.fingerprint, b.body.fingerprint);
+  assert.equal(a.body.edge_fingerprint, b.body.edge_fingerprint);
+  assert.match(a.body.edge_fingerprint, /^[a-f0-9]{16}$/);
+  assert.equal(JSON.stringify(a.body).includes('203.0.113.10'), false);
+  assert.equal(invoke('8.8.8.8', token, 'not-an-ip').body.edge_fingerprint, null);
 });
