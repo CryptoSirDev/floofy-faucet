@@ -4,7 +4,7 @@ const path = require('path');
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { renderClaimPayload } = require('./lib/claim-wire-contract.cjs');
 const { createIpDiagnosticHandler } = require('./lib/render-ip-diagnostic.cjs');
-const { resolveVerifiedClientIp } = require('./lib/verified-client-ip.cjs');
+const { resolveVerifiedClientIp, resolveCloudflareClientIp } = require('./lib/verified-client-ip.cjs');
 const { submitLiveClaim } = require('./lib/submit-live-claim.cjs');
 const app = express();
 
@@ -252,7 +252,8 @@ app.post('/api/request', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   // Only accept an IP authenticated by the trusted ingress signer.
   // Express req.ip can be influenced by client-supplied forwarding headers.
-  const ip = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET);
+  const ip = resolveVerifiedClientIp(req, process.env.TRUSTED_INGRESS_IP_SECRET)
+    || resolveCloudflareClientIp(req, process.env.RENDER_CF_EDGE_VERIFIED === 'true');
   if (!ip) return res.status(403).json({ success: false, message: 'Verified client IP unavailable.' });
   if (FAUCET_PAUSED || !CLAIMS_INTEGRATION_ENABLED || !PAYOUT_INTEGRATION_APPROVED)
     return res.status(503).json({ success: false, paused: true, message: MAINTENANCE_MESSAGE });
